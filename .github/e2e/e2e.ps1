@@ -22,6 +22,7 @@ public static class U {
   [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern IntPtr FindWindow(string c, string t);
   [StructLayout(LayoutKind.Sequential)] public struct RECT { public int L, T, R, B; }
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
+  [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint flags);
   public static string ForegroundProcess() {
     uint pid; GetWindowThreadProcessId(GetForegroundWindow(), out pid);
     try { return System.Diagnostics.Process.GetProcessById((int)pid).ProcessName; } catch { return "?"; }
@@ -83,13 +84,11 @@ function ClickOn($name) {
   $el = Find $name
   if (-not $el) { Write-Host "      (no element named '$name')"; return $false }
   # Past the window's edge, it is scrolled to with the wheel, as by hand.
-  # 40 px leave out the title bar. The window can open partly behind the
-  # taskbar, where a click would open Search instead.
-  $screenBottom = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea.Bottom
+  # 40 px leave out the title bar.
   for ($i = 0; $i -lt 15; $i++) {
     $w = WindowRect
     $b = $el.Current.BoundingRectangle
-    if ($b.Bottom -gt [Math]::Min($w.B, $screenBottom)) { $notch = -120 } elseif ($b.Top -lt $w.T + 40) { $notch = 120 } else { break }
+    if ($b.Bottom -gt $w.B) { $notch = -120 } elseif ($b.Top -lt $w.T + 40) { $notch = 120 } else { break }
     [U]::SetCursorPos([int](($w.L + $w.R) / 2), [int](($w.T + $w.B) / 2)) | Out-Null
     [U]::Wheel($notch)
     Start-Sleep -Milliseconds 300
@@ -106,6 +105,15 @@ function ClickAway($when) {
   [U]::Click(10, 10)
   Start-Sleep 1
   Check "another window has the focus $when" ([U]::ForegroundProcess() -ne 'pinwheel')
+}
+# Windows cascades new windows, sometimes behind the taskbar, where a click
+# opens Search. Clear of the taskbar, and of (10, 10) where ClickAway clicks.
+function OpenSettings {
+  Start-Process $Exe -ArgumentList '--settings'
+  Start-Sleep 8
+  # SWP_NOSIZE | SWP_NOZORDER
+  [U]::SetWindowPos([U]::FindWindow([NullString]::Value, $title), [IntPtr]::Zero, 200, 0, 0, 0, 5) | Out-Null
+  Start-Sleep 1
 }
 function Saved { Get-Content $settingsFile -Raw | ConvertFrom-Json }
 $log = Join-Path $env:LOCALAPPDATA 'Pinwheel\logs\pinwheel.log'
@@ -125,8 +133,7 @@ $shortcut = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\Pinwhe
 Check 'Start menu entry created' (Test-Path $shortcut)
 
 # The settings window, each card open in turn.
-Start-Process $Exe -ArgumentList '--settings'
-Start-Sleep 8
+OpenSettings
 Check 'settings window opens' ([U]::FindWindow([NullString]::Value, $title) -ne [IntPtr]::Zero)
 Shot 'closed'
 # What each card shows only when open. The runner has no audio device.
@@ -196,8 +203,7 @@ if ($foreground -match $startMenu) { Press 0x1B }
 Get-Process pinwheel | Where-Object { $_.MainWindowTitle -eq $title } | Stop-Process
 Set-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize' AppsUseLightTheme 0
 Start-Sleep 2
-Start-Process $Exe -ArgumentList '--settings'
-Start-Sleep 8
+OpenSettings
 if (ClickOn 'Test output') { Shot 'dark-output-open' }
 if (ClickOn '+ wheel changes the volume') { Shot 'dark-wheel-open' }
 
