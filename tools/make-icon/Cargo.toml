@@ -1,0 +1,9 @@
+[package]
+name = "make-icon"
+description = "Generates crates/app/res/sounddock.ico"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[dependencies]
+tiny-skia = "0.12.0"

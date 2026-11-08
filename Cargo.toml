@@ -1,0 +1,15 @@
+[workspace]
+resolver = "3"
+members = ["crates/core", "crates/app", "tools/make-icon"]
+# The app only builds for Windows; plain `cargo test` on any OS covers the core.
+default-members = ["crates/core"]
+
+[workspace.package]
+edition = "2024"
+version = "0.1.0"
+publish = false
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
