@@ -27,18 +27,16 @@ use windows::Win32::UI::WindowsAndMessaging::{
 
 const TIMEOUT_MS: u32 = 15_000;
 
-/// Name of a shortcut with the main key as the current keyboard layout
-/// writes it ("Ctrl+Alt+É" on a French layout).
-pub fn describe(hotkey: &Hotkey, lang: Lang) -> String {
+/// The keys of a shortcut, with the main key as the current keyboard layout
+/// writes it (`["Ctrl", "Alt", "É"]` on a French layout).
+pub fn describe(hotkey: &Hotkey, lang: Lang) -> Vec<String> {
     let fixed = || key_name(hotkey.key, lang).into_owned();
     let key = if has_fixed_name(hotkey.key) {
         fixed()
     } else {
         layout_name(hotkey.key).unwrap_or_else(fixed)
     };
-    let mut text = String::new();
-    let _ = hotkey.format_with(&mut text, &key, lang);
-    text
+    hotkey.modifier_names(lang).map(String::from).chain([key]).collect()
 }
 
 fn layout_name(vk: u16) -> Option<String> {
@@ -210,4 +208,21 @@ unsafe extern "system" fn keyboard_proc(code: i32, wparam: WPARAM, lparam: LPARA
         }
     }
     unsafe { CallNextHookEx(None, code, wparam, lparam) }
+}
+
+/// PROBE: a keyboard hook that only logs, for the whole life of the window.
+pub fn probe_hook() -> MessageThread {
+    unsafe extern "system" fn probe_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+        let info = unsafe { &*(lparam.0 as *const KBDLLHOOKSTRUCT) };
+        log::info!("PROBE startup hook: vk {:#x} msg {:#x}", info.vkCode, wparam.0);
+        unsafe { CallNextHookEx(None, code, wparam, lparam) }
+    }
+    MessageThread::spawn("probe-hook", || {
+        match unsafe { SetWindowsHookExW(WH_KEYBOARD_LL, Some(probe_proc), None, 0) } {
+            Ok(_) => log::info!("PROBE startup hook installed"),
+            Err(e) => log::info!("PROBE startup hook failed: {e}"),
+        }
+        run_message_loop(|_| {});
+    })
+    .expect("probe thread")
 }

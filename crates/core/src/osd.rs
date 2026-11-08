@@ -10,7 +10,9 @@ use crate::settings::OsdStyle;
 use crate::volume::VolumeState;
 use ab_glyph::{Font, FontVec, PxScale, ScaleFont, point};
 use std::path::PathBuf;
-use tiny_skia::{Color, FillRule, LineCap, Paint, Path, PathBuilder, Pixmap, Stroke, Transform};
+use tiny_skia::{
+    Color, FillRule, FilterQuality, LineCap, Paint, Path, PathBuilder, Pixmap, PixmapPaint, Stroke, Transform,
+};
 
 /// What the display shows.
 #[derive(Debug, Clone)]
@@ -20,6 +22,8 @@ pub enum Content {
     Output(String),
     /// A short notice, such as an output that is unplugged.
     Notice(String),
+    /// Pinwheel just started, with the app icon in its sizes.
+    Started { text: String, icons: Vec<Pixmap> },
 }
 
 type Rgba = [u8; 4];
@@ -94,8 +98,9 @@ pub fn render(content: &Content, look: Look, fonts: &Fonts) -> Pixmap {
             OsdStyle::Pill => pill(*volume, look, fonts, texts),
             OsdStyle::BigNumber => big_number(*volume, look, fonts, texts),
         },
-        Content::Output(name) => label(name, true, look, fonts),
-        Content::Notice(text) => label(text, false, look, fonts),
+        Content::Output(name) => label(name, Icon::Speaker, look, fonts),
+        Content::Notice(text) => label(text, Icon::None, look, fonts),
+        Content::Started { text, icons } => label(text, Icon::Image(icons), look, fonts),
     }
 }
 
@@ -237,6 +242,26 @@ impl Canvas {
         }
     }
 
+    /// Draws the image of `icons` that best fits a `size` square at `(x, top)`.
+    fn image(&mut self, icons: &[Pixmap], x: f32, top: f32, size: f32) {
+        let pixels = size * self.scale;
+        // The smallest image at least as large, so it is only ever scaled down a little.
+        let best = icons
+            .iter()
+            .filter(|icon| icon.width() as f32 >= pixels)
+            .min_by_key(|icon| icon.width())
+            .or_else(|| icons.iter().max_by_key(|icon| icon.width()));
+        let Some(icon) = best else { return };
+        let factor = pixels / icon.width() as f32;
+        let transform = Transform::from_scale(factor, factor)
+            .post_translate((x + SHADOW_MARGIN) * self.scale, (top + SHADOW_MARGIN) * self.scale);
+        let paint = PixmapPaint {
+            quality: FilterQuality::Bicubic,
+            ..PixmapPaint::default()
+        };
+        self.pixmap.draw_pixmap(0, 0, icon.as_ref(), &paint, transform, None);
+    }
+
     fn text(&mut self, font: Option<&FontVec>, size: f32, text: &str, x: f32, baseline: f32) {
         if let Some(font) = font {
             draw_text(
@@ -307,22 +332,35 @@ fn big_number(volume: VolumeState, look: Look, fonts: &Fonts, texts: &Texts) -> 
     canvas.pixmap
 }
 
-/// Output name or notice, with a speaker icon for outputs.
-fn label(text: &str, with_icon: bool, look: Look, fonts: &Fonts) -> Pixmap {
+/// What goes before the text of a label.
+enum Icon<'a> {
+    None,
+    Speaker,
+    Image(&'a [Pixmap]),
+}
+
+/// Output name or notice, with its icon.
+fn label(text: &str, icon: Icon, look: Look, fonts: &Fonts) -> Pixmap {
     let height = if look.style == OsdStyle::Bar { 40.0 } else { 52.0 };
     let size = 15.0;
     let font = fonts.regular.as_ref();
     let text = truncate(font, size, text, TEXT_MAX_WIDTH);
-    let icon = if with_icon { 20.0 + 10.0 } else { 0.0 };
+    let icon_size = 20.0;
+    let icon_room = match icon {
+        Icon::None => 0.0,
+        Icon::Speaker | Icon::Image(_) => icon_size + 10.0,
+    };
     let padding = 20.0;
-    let width = (padding * 2.0 + icon + text_width(font, size, &text)).max(160.0);
+    let width = (padding * 2.0 + icon_room + text_width(font, size, &text)).max(160.0);
     let mut canvas = Canvas::new(width, height, look);
-    let content_width = icon + text_width(font, size, &text);
+    let content_width = icon_room + text_width(font, size, &text);
     let x = (width - content_width) / 2.0;
-    if with_icon {
-        canvas.speaker(x, height / 2.0, 20.0, None);
+    match icon {
+        Icon::None => {}
+        Icon::Speaker => canvas.speaker(x, height / 2.0, icon_size, None),
+        Icon::Image(icons) => canvas.image(icons, x, (height - icon_size) / 2.0, icon_size),
     }
-    canvas.text(font, size, &text, x + icon, height / 2.0 + cap_offset(size));
+    canvas.text(font, size, &text, x + icon_room, height / 2.0 + cap_offset(size));
     canvas.pixmap
 }
 
@@ -502,5 +540,22 @@ mod tests {
             r < ar && g > ag && b < ab,
             "accent blended with the background: {r} {g} {b}"
         );
+    }
+
+    #[test]
+    fn the_started_notice_draws_the_closest_larger_icon() {
+        let solid = |size, color: Color| {
+            let mut icon = Pixmap::new(size, size).unwrap();
+            icon.fill(color);
+            icon
+        };
+        let content = Content::Started {
+            text: String::new(),
+            icons: vec![solid(16, Color::from_rgba8(255, 0, 0, 255)), solid(32, Color::from_rgba8(0, 255, 0, 255))],
+        };
+        // 20 logical pixels at 150 % need 30: the 32 px image, not the 16 px one.
+        let pixmap = render(&content, look(1.5), &no_fonts());
+        // Without text, the 20 px icon is centred in the 160 × 40 panel.
+        assert_eq!(pixel(&pixmap, 1.5, 80.0, 20.0), [0, 255, 0, 255]);
     }
 }

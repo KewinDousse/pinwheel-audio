@@ -52,11 +52,16 @@ $exe = Resolve-Path 'target\release\pinwheel.exe'
 "screen: $([System.Windows.Forms.Screen]::PrimaryScreen.Bounds)"
 
 Start-Process $exe
-Start-Sleep 3
+Start-Sleep -Milliseconds 900
+Shot 'started-notice'
+Start-Sleep 2
+"Start menu entry: $(Test-Path (Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\Pinwheel.lnk'))"
 Start-Process $exe -ArgumentList '--settings'
 Start-Sleep 8
 Shot 'settings'
 
+[U]::Key(0x41, $false); [U]::Key(0x41, $true)
+Start-Sleep 1
 $root = [System.Windows.Automation.AutomationElement]::RootElement
 $window = FindByName $root 'Pinwheel settings'
 "window found: $($null -ne $window)"
@@ -102,6 +107,19 @@ Start-Sleep 1
 Start-Sleep 2
 Shot 'after-win-wheel-quick'
 [U]::Key(0x1B, $false); [U]::Key(0x1B, $true)
+
+# The settings window in the dark theme, scrolled to its end too.
+$settingsProcess = Get-Process pinwheel | Where-Object { $_.MainWindowTitle -eq 'Pinwheel settings' }
+$settingsProcess | Stop-Process
+Set-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize' AppsUseLightTheme 0
+Start-Sleep 2
+Start-Process $exe -ArgumentList '--settings'
+Start-Sleep 8
+Shot 'settings-dark'
+[U]::SetCursorPos(400, 400) | Out-Null
+for ($i = 0; $i -lt 10; $i++) { [U]::Wheel(-120); Start-Sleep -Milliseconds 50 }
+Start-Sleep 1
+Shot 'settings-dark-end'
 
 $log = Join-Path $env:LOCALAPPDATA 'Pinwheel\logs\pinwheel.log'
 if (Test-Path $log) { Copy-Item $log $out; "--- log"; Get-Content $log }

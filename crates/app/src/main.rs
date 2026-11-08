@@ -21,6 +21,8 @@ mod hook;
 #[cfg(windows)]
 mod hotkeys;
 #[cfg(windows)]
+mod icon;
+#[cfg(windows)]
 mod ipc;
 #[cfg(windows)]
 mod keys;
@@ -33,7 +35,11 @@ mod osd;
 #[cfg(windows)]
 mod paths;
 #[cfg(windows)]
+mod settings_theme;
+#[cfg(windows)]
 mod settings_ui;
+#[cfg(windows)]
+mod start_menu;
 #[cfg(windows)]
 mod startup;
 #[cfg(windows)]

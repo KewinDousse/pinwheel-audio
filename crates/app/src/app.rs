@@ -14,7 +14,7 @@ use crate::hotkeys::Hotkeys;
 use crate::ipc::{self, InstanceLock, WM_OPEN_SETTINGS, WM_PREVIEW_OSD, WM_RELOAD, WM_TRAY, WM_VOLUME_NOTCHES};
 use crate::osd::Osd;
 use crate::tray::{self, MenuCommand, Tray};
-use crate::{language, logging, paths, startup};
+use crate::{icon, language, logging, paths, start_menu, startup};
 use pinwheel_core::devices::{Resolution, resolve};
 use pinwheel_core::i18n::{Lang, Texts};
 use pinwheel_core::osd::Content;
@@ -114,10 +114,20 @@ pub fn run() {
         unsafe { SetTimer(Some(hwnd), TIMER_TRAY_RETRY, TRAY_RETRY_MS, None) };
     }
     startup::refresh_path();
+    start_menu::refresh();
     APP.set(Some(app));
 
     if first_run {
         open_settings();
+    } else {
+        // Without the settings window, this is the only sign that it started.
+        with_app(|app| {
+            let text = app.texts().started.into();
+            app.show(&Content::Started {
+                text,
+                icons: icon::images(),
+            });
+        });
     }
 
     let mut msg = MSG::default();
