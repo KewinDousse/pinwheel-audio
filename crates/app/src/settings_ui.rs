@@ -114,6 +114,9 @@ struct SettingsApp {
     /// ID of the Windows default output.
     default_id: Option<String>,
     open: Option<Fold>,
+    /// The card opened by the pass before: its rows are drawn now, so it
+    /// can be scrolled into view.
+    reveal: bool,
     /// Language of the window title, updated when the setting changes.
     title_lang: Lang,
     themes: Themes,
@@ -159,6 +162,7 @@ impl SettingsApp {
             capture: None,
             default_id: None,
             open: None,
+            reveal: false,
             title_lang: lang,
             themes: Themes::new(),
         }
@@ -322,8 +326,9 @@ impl SettingsApp {
             let output = &mut self.settings.outputs[index];
             let open = self.open.as_ref() == Some(&Fold::Output(output.id.clone()));
             let captured = capturing.filter(|(i, _)| *i == index).map(|(_, remaining)| remaining);
+            let reveal = self.reveal && open;
             ui.add_enabled_ui(capturing.is_none() || captured.is_some(), |ui| {
-                theme::fold_card(ui, palette, |ui| {
+                theme::fold_card(ui, palette, reveal, |ui| {
                     let (clicked, action) = theme::fold_header(
                         ui,
                         palette,
@@ -430,7 +435,7 @@ impl SettingsApp {
         let mut toggled = false;
         let mut added = None;
         ui.add_enabled_ui(self.capture.is_none(), |ui| {
-            theme::fold_card(ui, palette, |ui| {
+            theme::fold_card(ui, palette, self.reveal && open, |ui| {
                 (toggled, ()) = theme::fold_header(
                     ui,
                     palette,
@@ -483,7 +488,7 @@ impl SettingsApp {
         let osd = &mut self.settings.osd;
         let mut toggled = false;
         ui.add_enabled_ui(self.capture.is_none(), |ui| {
-            theme::fold_card(ui, palette, |ui| {
+            theme::fold_card(ui, palette, self.reveal && open, |ui| {
                 let summary = (t.wheel_summary)(i32::from(*step), osd.style.label(lang), osd.position.label(lang));
                 (toggled, ()) = theme::fold_header(
                     ui,
@@ -541,7 +546,7 @@ impl SettingsApp {
         let mut toggled = false;
         let mut startup_changed = false;
         ui.add_enabled_ui(self.capture.is_none(), |ui| {
-            theme::fold_card(ui, palette, |ui| {
+            theme::fold_card(ui, palette, self.reveal && open, |ui| {
                 let language_name = language.map_or(t.windows_language_summary, Lang::native_name);
                 let summary = (t.general_summary)(language_name, startup);
                 (toggled, ()) = theme::fold_header(
@@ -632,6 +637,7 @@ impl eframe::App for SettingsApp {
         }
         // This pass drew the state from before the click: without a new
         // pass, the change would only show at the next mouse move.
+        self.reveal = self.open.is_some() && self.open != open_before;
         if save || self.open != open_before || self.capture.is_some() != capturing_before {
             ui.ctx().request_repaint();
         }

@@ -229,8 +229,9 @@ pub fn remove_button(ui: &mut egui::Ui, palette: &Palette, text: &str) -> egui::
 }
 
 /// A card that folds: [`fold_header`] first, then its rows when open.
-pub fn fold_card<R>(ui: &mut egui::Ui, palette: &Palette, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
-    egui::Frame::new()
+/// `reveal` scrolls the whole card into view.
+pub fn fold_card<R>(ui: &mut egui::Ui, palette: &Palette, reveal: bool, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
+    let card = egui::Frame::new()
         .fill(palette.card)
         .stroke(Stroke::new(1.0, palette.card_stroke))
         .corner_radius(CornerRadius::same(CARD_RADIUS))
@@ -238,8 +239,11 @@ pub fn fold_card<R>(ui: &mut egui::Ui, palette: &Palette, add: impl FnOnce(&mut 
             ui.set_width(ui.available_width());
             ui.spacing_mut().item_spacing.y = 0.0;
             add(ui)
-        })
-        .inner
+        });
+    if reveal {
+        card.response.scroll_to_me(None);
+    }
+    card.inner
 }
 
 /// The always visible line of a [`fold_card`]: `title` on the left, laid out

@@ -62,7 +62,7 @@ When the settings window does not open at startup (every start but the first), t
 The window shows little at once, so that it reads at a glance:
 
 - One card per output, then "Add an output", then a "Win + wheel" card (step, display style and position) and a "General" card (language, startup, logs).
-- Each card folds. Closed, it shows what matters day to day: an output's name, its state, whether it is the default output of Windows (`Audio::default_output_id`, read every second) and its keys; the other cards a one-line summary of their values. A click on the card opens it; one card is open at a time.
+- Each card folds. Closed, it shows what matters day to day: an output's name, its state, whether it is the default output of Windows (`Audio::default_output_id`, read every second) and its keys; the other cards a one-line summary of their values. A click on the card opens it, and scrolls it into view; one card is open at a time.
 - The rare actions (change or clear a shortcut, the calls option, remove the output) are inside the open card. Remove is at its bottom, away from the header, so that a double click opening the card cannot remove the output.
 - A shortcut's error or warning shows on its card, open or closed, and only when there is one.
 - During a capture, the box waiting for keys takes the place of the shortcut and the other cards are disabled.

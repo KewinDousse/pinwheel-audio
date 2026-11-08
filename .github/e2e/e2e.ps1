@@ -96,7 +96,8 @@ function LogHas($text) { (Test-Path $log) -and (Select-String -Path $log -Simple
 $dir = Join-Path $env:APPDATA 'Pinwheel'
 New-Item -ItemType Directory -Force $dir | Out-Null
 $settingsFile = Join-Path $dir 'settings.json'
-'{"version":1,"language":"english","outputs":[{"id":"e2e","name":"Test output"}]}' | Set-Content $settingsFile
+# Enough outputs that the General card, open, goes past the window's bottom.
+'{"version":1,"language":"english","outputs":[{"id":"e2e","name":"Test output"},{"id":"e2e-2","name":"Speakers"},{"id":"e2e-3","name":"Headset"},{"id":"e2e-4","name":"Monitor"}]}' | Set-Content $settingsFile
 
 # The background process.
 Start-Process $Exe
@@ -123,6 +124,11 @@ foreach ($card in $cards.Keys) {
   if ($previous) { Check "'$card' closes the card open before" (-not (Find $previous)) }
   $previous = $cards[$card]
 }
+$r = New-Object U+RECT
+[U]::GetWindowRect([U]::FindWindow([NullString]::Value, $title), [ref]$r) | Out-Null
+$button = Find 'Open folder'
+$bottom = if ($button) { $r.B - $button.Current.BoundingRectangle.Bottom } else { -1 }
+Check 'the open card scrolls into view' ($bottom -gt 0) "button bottom $bottom px from the window's"
 ClickOn 'General' | Out-Null
 
 # Shortcut capture: Ctrl+Alt+1 is saved.
