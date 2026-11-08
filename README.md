@@ -8,6 +8,10 @@ A small Windows 10/11 utility that lives in the notification area:
 
 The interface is in English or French. It follows the Windows display language, and can be changed in the settings.
 
+<img src="docs/images/display.png" width="760" alt="The volume display in its three styles, pill, thin bar and big number, and the announcement of a new output: dark panels with a light blue gauge">
+
+<img src="docs/images/icon.png" width="760" alt="The Pinwheel icon, white pedestrian crossing stripes in an X on a magenta tile with a yellow centre, and the same icon at 16 px in the notification area">
+
 ## Install
 
 1. Download `pinwheel.exe` from the [releases](https://github.com/KewinDousse/pinwheel-audio/releases) and put it in a local folder, such as `%LOCALAPPDATA%\Programs\Pinwheel\`. Windows often blocks executables started from a network share.
