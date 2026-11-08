@@ -1,44 +1,54 @@
 //! Shortcut capture and key names, for the settings window.
 //!
-//! The capture installs a low-level keyboard hook on a thread of its own and
-//! swallows every key until a combination is complete. This is what lets any
-//! key be chosen, Win combinations included: the shell never sees them, so
-//! Win+E does not open the Explorer while it is being captured, and the
-//! background process's shortcuts do not fire.
+//! The capture reads the keyboard through Raw Input, on a hidden window of a
+//! thread of its own. Low-level keyboard hooks, of this process or of any
+//! other, are not called for the keys Windows sends to the settings window,
+//! while Raw Input sees every key, Win included. It cannot stop a key, so the
+//! background process suspends its shortcuts while a capture lasts.
 //!
-//! The hook is global, so the capture ends by itself, letting the key
-//! through, as soon as another application takes the focus, and after
+//! Raw Input also sees keys typed in other applications, so the capture ends
+//! by itself as soon as another application takes the focus, and after
 //! [`TIMEOUT_MS`].
 
 use crate::hook::VK_MASK;
+use crate::ipc::{self, WM_CAPTURE_BEGIN, WM_CAPTURE_END};
 use crate::thread::{MessageThread, run_message_loop};
 use pinwheel_core::hotkey::{HeldModifiers, Hotkey, has_fixed_name, is_cancel, is_usable_key, key_name};
 use pinwheel_core::i18n::Lang;
 use std::cell::RefCell;
 use std::sync::mpsc;
-use windows::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
-use windows::Win32::System::Threading::{GetCurrentProcessId, GetCurrentThreadId};
-use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyNameTextW, MAPVK_VK_TO_VSC_EX, MapVirtualKeyW};
-use windows::Win32::UI::WindowsAndMessaging::{
-    CallNextHookEx, GetForegroundWindow, GetWindowThreadProcessId, HC_ACTION, HHOOK, KBDLLHOOKSTRUCT,
-    PostThreadMessageW, SetTimer, SetWindowsHookExW, UnhookWindowsHookEx, WH_KEYBOARD_LL, WM_APP, WM_KEYDOWN,
-    WM_SYSKEYDOWN, WM_TIMER,
+use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
+use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows::Win32::System::Threading::GetCurrentProcessId;
+use windows::Win32::UI::Input::KeyboardAndMouse::{
+    GetKeyNameTextW, MAPVK_VK_TO_VSC_EX, MapVirtualKeyW, VK_CONTROL, VK_LCONTROL, VK_LMENU, VK_LSHIFT, VK_MENU,
+    VK_RCONTROL, VK_RMENU, VK_RSHIFT, VK_SHIFT,
 };
+use windows::Win32::UI::Input::{
+    GetRawInputData, HRAWINPUT, RAWINPUT, RAWINPUTDEVICE, RAWINPUTHEADER, RID_INPUT, RIDEV_INPUTSINK, RIDEV_REMOVE,
+    RIM_TYPEKEYBOARD, RegisterRawInputDevices,
+};
+use windows::Win32::UI::WindowsAndMessaging::{
+    CreateWindowExW, DefWindowProcW, DestroyWindow, GetForegroundWindow, GetWindowThreadProcessId, HWND_MESSAGE,
+    RI_KEY_BREAK, RI_KEY_E0, RegisterClassExW, SetTimer, WINDOW_EX_STYLE, WINDOW_STYLE, WM_INPUT, WM_TIMER,
+    WNDCLASSEXW,
+};
+use windows::core::w;
 
 const TIMEOUT_MS: u32 = 15_000;
+/// Scan code of the right Shift, which Raw Input reports as plain `VK_SHIFT`.
+const SCAN_RIGHT_SHIFT: u16 = 0x36;
 
-/// Name of a shortcut with the main key as the current keyboard layout
-/// writes it ("Ctrl+Alt+É" on a French layout).
-pub fn describe(hotkey: &Hotkey, lang: Lang) -> String {
+/// The keys of a shortcut, with the main key as the current keyboard layout
+/// writes it (`["Ctrl", "Alt", "É"]` on a French layout).
+pub fn describe(hotkey: &Hotkey, lang: Lang) -> Vec<String> {
     let fixed = || key_name(hotkey.key, lang).into_owned();
     let key = if has_fixed_name(hotkey.key) {
         fixed()
     } else {
         layout_name(hotkey.key).unwrap_or_else(fixed)
     };
-    let mut text = String::new();
-    let _ = hotkey.format_with(&mut text, &key, lang);
-    text
+    hotkey.modifier_names(lang).map(String::from).chain([key]).collect()
 }
 
 fn layout_name(vk: u16) -> Option<String> {
@@ -57,7 +67,7 @@ pub enum Captured {
     Hotkey(Hotkey),
     /// Escape alone, another application took the focus, or the time ran out.
     Cancelled,
-    /// The keyboard hook could not be installed (see the log).
+    /// The keyboard could not be read (see the log).
     Failed,
 }
 
@@ -73,6 +83,7 @@ impl Capture {
     pub fn start(on_result: impl Fn() + Send + 'static) -> std::io::Result<Self> {
         let (sender, receiver) = mpsc::channel();
         let thread = MessageThread::spawn("shortcut-capture", move || run(sender, Box::new(on_result)))?;
+        ipc::notify_main(WM_CAPTURE_BEGIN);
         Ok(Self {
             receiver,
             _thread: thread,
@@ -84,8 +95,11 @@ impl Capture {
     }
 }
 
-/// Posted by the hook to its own thread once the result is sent.
-const WM_FINISHED: u32 = WM_APP + 1;
+impl Drop for Capture {
+    fn drop(&mut self) {
+        ipc::notify_main(WM_CAPTURE_END);
+    }
+}
 
 struct State {
     sender: mpsc::Sender<Captured>,
@@ -105,10 +119,10 @@ fn run(sender: mpsc::Sender<Captured>, on_result: Box<dyn Fn()>) {
         held: HeldModifiers::default(),
         finished: false,
     }));
-    let mut hook: Option<HHOOK> = match unsafe { SetWindowsHookExW(WH_KEYBOARD_LL, Some(keyboard_proc), None, 0) } {
-        Ok(hook) => Some(hook),
+    let window = match listen() {
+        Ok(window) => Some(window),
         Err(e) => {
-            log::error!("installing the capture hook failed: {e}");
+            log::error!("reading the keyboard for the capture failed: {e}");
             finish(Captured::Failed);
             None
         }
@@ -116,18 +130,67 @@ fn run(sender: mpsc::Sender<Captured>, on_result: Box<dyn Fn()>) {
     unsafe { SetTimer(None, 0, TIMEOUT_MS, None) };
     // The thread waits for WM_QUIT (see `thread.rs`), even once finished.
     run_message_loop(|msg| {
-        if msg.message == WM_TIMER {
+        if msg.message == WM_TIMER && msg.hwnd.is_invalid() {
             finish(Captured::Cancelled);
         }
-        if (msg.message == WM_FINISHED || msg.message == WM_TIMER)
-            && let Some(hook) = hook.take()
-        {
-            let _ = unsafe { UnhookWindowsHookEx(hook) };
-        }
     });
-    if let Some(hook) = hook {
-        let _ = unsafe { UnhookWindowsHookEx(hook) };
+    if let Some(window) = window {
+        stop_listening(window);
     }
+}
+
+/// A message-only window that receives every key through Raw Input.
+fn listen() -> windows::core::Result<HWND> {
+    let instance = unsafe { GetModuleHandleW(None) }?.into();
+    let class = w!("Pinwheel.Capture");
+    let wc = WNDCLASSEXW {
+        cbSize: size_of::<WNDCLASSEXW>() as u32,
+        lpfnWndProc: Some(window_proc),
+        hInstance: instance,
+        lpszClassName: class,
+        ..Default::default()
+    };
+    // Fails harmlessly when an earlier capture registered it.
+    unsafe { RegisterClassExW(&wc) };
+    let window = unsafe {
+        CreateWindowExW(
+            WINDOW_EX_STYLE(0),
+            class,
+            None,
+            WINDOW_STYLE(0),
+            0,
+            0,
+            0,
+            0,
+            Some(HWND_MESSAGE),
+            None,
+            Some(instance),
+            None,
+        )
+    }?;
+    register_keyboard(RIDEV_INPUTSINK, Some(window)).inspect_err(|_| {
+        let _ = unsafe { DestroyWindow(window) };
+    })?;
+    Ok(window)
+}
+
+fn stop_listening(window: HWND) {
+    let _ = register_keyboard(RIDEV_REMOVE, None);
+    let _ = unsafe { DestroyWindow(window) };
+}
+
+fn register_keyboard(
+    flags: windows::Win32::UI::Input::RAWINPUTDEVICE_FLAGS,
+    target: Option<HWND>,
+) -> windows::core::Result<()> {
+    // Generic desktop page, keyboard usage.
+    let device = RAWINPUTDEVICE {
+        usUsagePage: 0x01,
+        usUsage: 0x06,
+        dwFlags: flags,
+        hwndTarget: target.unwrap_or_default(),
+    };
+    unsafe { RegisterRawInputDevices(&[device], size_of::<RAWINPUTDEVICE>() as u32) }
 }
 
 /// Sends the first result only.
@@ -137,9 +200,9 @@ fn finish(result: Captured) {
             return;
         };
         state.finished = true;
+        log::info!("shortcut capture ended: {result:?}");
         let _ = state.sender.send(result);
         (state.on_result)();
-        let _ = unsafe { PostThreadMessageW(GetCurrentThreadId(), WM_FINISHED, WPARAM(0), LPARAM(0)) };
     });
 }
 
@@ -154,21 +217,15 @@ fn settings_window_has_focus() -> bool {
     process == unsafe { GetCurrentProcessId() }
 }
 
-/// What the hook does with a key event.
-enum Verdict {
-    PassThrough,
-    Swallow,
-}
-
-fn on_key(vk: u16, down: bool) -> Verdict {
+fn on_key(vk: u16, down: bool) {
     let finished = STATE.with_borrow(|state| state.as_ref().is_none_or(|s| s.finished));
-    // The wheel hook's Start menu mask is not a key the user pressed.
+    // The background process's Start menu mask is not a key the user pressed.
     if finished || vk == VK_MASK.0 {
-        return Verdict::PassThrough;
+        return;
     }
     if !settings_window_has_focus() {
         finish(Captured::Cancelled);
-        return Verdict::PassThrough;
+        return;
     }
     let held = STATE.with_borrow_mut(|state| {
         let state = state.as_mut().expect("state checked above");
@@ -189,20 +246,39 @@ fn on_key(vk: u16, down: bool) -> Verdict {
             Captured::Hotkey(hotkey)
         });
     }
-    // Key-ups, modifiers and unusable keys are swallowed too: neither the
-    // shell nor the focused window sees anything during the capture.
-    Verdict::Swallow
 }
 
-unsafe extern "system" fn keyboard_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
-    if code == HC_ACTION as i32 {
-        let info = unsafe { &*(lparam.0 as *const KBDLLHOOKSTRUCT) };
-        // Injected keys are accepted: macro software (G Hub, Synapse,
-        // AutoHotkey) sends its keys that way.
-        let down = matches!(wparam.0 as u32, WM_KEYDOWN | WM_SYSKEYDOWN);
-        if let Verdict::Swallow = on_key(info.vkCode as u16, down) {
-            return LRESULT(1);
+/// The key of a Raw Input event, with the side of Ctrl, Alt and Shift, which
+/// Raw Input reports as their generic key.
+fn sided_key(vk: u16, scan: u16, flags: u16) -> u16 {
+    let right = flags & RI_KEY_E0 as u16 != 0;
+    let pick = |left: u16, right_key: u16, is_right: bool| if is_right { right_key } else { left };
+    match vk {
+        v if v == VK_SHIFT.0 => pick(VK_LSHIFT.0, VK_RSHIFT.0, scan == SCAN_RIGHT_SHIFT),
+        v if v == VK_CONTROL.0 => pick(VK_LCONTROL.0, VK_RCONTROL.0, right),
+        v if v == VK_MENU.0 => pick(VK_LMENU.0, VK_RMENU.0, right),
+        _ => vk,
+    }
+}
+
+unsafe extern "system" fn window_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+    if msg == WM_INPUT {
+        let mut input = RAWINPUT::default();
+        let mut size = size_of::<RAWINPUT>() as u32;
+        let read = unsafe {
+            GetRawInputData(
+                HRAWINPUT(lparam.0 as *mut _),
+                RID_INPUT,
+                Some((&raw mut input).cast()),
+                &mut size,
+                size_of::<RAWINPUTHEADER>() as u32,
+            )
+        };
+        if read != u32::MAX && input.header.dwType == RIM_TYPEKEYBOARD.0 {
+            let keyboard = unsafe { input.data.keyboard };
+            let down = keyboard.Flags & RI_KEY_BREAK as u16 == 0;
+            on_key(sided_key(keyboard.VKey, keyboard.MakeCode, keyboard.Flags), down);
         }
     }
-    unsafe { CallNextHookEx(None, code, wparam, lparam) }
+    unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
 }

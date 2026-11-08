@@ -9,12 +9,15 @@
 //! messages re-entrantly (the tray menu runs its own modal loop).
 
 use crate::audio::Audio;
-use crate::hook::HookThread;
+use crate::hook::{self, HookThread};
 use crate::hotkeys::Hotkeys;
-use crate::ipc::{self, InstanceLock, WM_OPEN_SETTINGS, WM_PREVIEW_OSD, WM_RELOAD, WM_TRAY, WM_VOLUME_NOTCHES};
+use crate::ipc::{
+    self, InstanceLock, WM_CAPTURE_BEGIN, WM_CAPTURE_END, WM_OPEN_SETTINGS, WM_PREVIEW_OSD, WM_RELOAD, WM_TRAY,
+    WM_VOLUME_NOTCHES,
+};
 use crate::osd::Osd;
 use crate::tray::{self, MenuCommand, Tray};
-use crate::{language, logging, paths, startup};
+use crate::{icon, language, logging, paths, start_menu, startup};
 use pinwheel_core::devices::{Resolution, resolve};
 use pinwheel_core::i18n::{Lang, Texts};
 use pinwheel_core::osd::Content;
@@ -36,8 +39,12 @@ use windows::core::w;
 
 const TIMER_HOTKEY_RETRY: usize = 20;
 const TIMER_TRAY_RETRY: usize = 21;
+const TIMER_CAPTURE_END: usize = 22;
 const HOTKEY_RETRY_MS: u32 = 30_000;
 const TRAY_RETRY_MS: u32 = 2_000;
+/// Longer than a capture lasts: the shortcuts come back even if the settings
+/// window closes without saying so.
+const CAPTURE_MAX_MS: u32 = 20_000;
 
 thread_local! {
     static APP: RefCell<Option<App>> = const { RefCell::new(None) };
@@ -114,10 +121,20 @@ pub fn run() {
         unsafe { SetTimer(Some(hwnd), TIMER_TRAY_RETRY, TRAY_RETRY_MS, None) };
     }
     startup::refresh_path();
+    start_menu::refresh();
     APP.set(Some(app));
 
     if first_run {
         open_settings();
+    } else {
+        // Without the settings window, this is the only sign that it started.
+        with_app(|app| {
+            let text = app.texts().started.into();
+            app.show(&Content::Started {
+                text,
+                icons: icon::images(),
+            });
+        });
     }
 
     let mut msg = MSG::default();
@@ -215,6 +232,7 @@ impl App {
         let Some(binding) = self.settings.outputs.get(index).cloned() else {
             return;
         };
+        log::info!("shortcut pressed for \"{}\"", binding.name);
         let Some(devices) = self.with_audio(Audio::outputs) else {
             return;
         };
@@ -284,6 +302,16 @@ impl App {
         }
     }
 
+    fn suspend_hotkeys(&mut self) {
+        self.hotkeys.suspend(self.hwnd);
+        unsafe { SetTimer(Some(self.hwnd), TIMER_CAPTURE_END, CAPTURE_MAX_MS, None) };
+    }
+
+    fn resume_hotkeys(&mut self) {
+        let _ = unsafe { KillTimer(Some(self.hwnd), TIMER_CAPTURE_END) };
+        self.register_hotkeys();
+    }
+
     fn register_hotkeys(&mut self) {
         let status = self.hotkeys.register_all(self.hwnd, &self.settings.outputs);
         self.write_status(&status);
@@ -311,6 +339,7 @@ impl App {
                     let _ = unsafe { KillTimer(Some(self.hwnd), TIMER_HOTKEY_RETRY) };
                 }
             }
+            TIMER_CAPTURE_END => self.resume_hotkeys(),
             TIMER_TRAY_RETRY if self.tray.show() => {
                 let _ = unsafe { KillTimer(Some(self.hwnd), TIMER_TRAY_RETRY) };
             }
@@ -358,7 +387,13 @@ fn current_lang() -> Lang {
 
 unsafe extern "system" fn window_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     match msg {
-        WM_VOLUME_NOTCHES => with_app(|app| app.on_volume_notches(wparam.0 as isize as i32)),
+        WM_VOLUME_NOTCHES => {
+            // Read even when the app is busy, or the hook would wait for this message forever.
+            let notches = hook::take_notches();
+            if notches != 0 {
+                with_app(|app| app.on_volume_notches(notches));
+            }
+        }
         WM_HOTKEY => {
             if let Some(index) = Hotkeys::output_index(wparam.0) {
                 with_app(|app| app.on_hotkey(index));
@@ -378,6 +413,8 @@ unsafe extern "system" fn window_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lpar
         WM_OPEN_SETTINGS => open_settings(),
         WM_RELOAD => with_app(App::reload),
         WM_PREVIEW_OSD => with_app(App::preview),
+        WM_CAPTURE_BEGIN => with_app(App::suspend_hotkeys),
+        WM_CAPTURE_END => with_app(App::resume_hotkeys),
         WM_TIMER => with_app(|app| app.on_timer(wparam.0)),
         WM_POWERBROADCAST if wparam.0 as u32 == PBT_APMRESUMEAUTOMATIC => with_app(App::reinstall_hook),
         WM_WTSSESSION_CHANGE if wparam.0 as u32 == WTS_SESSION_UNLOCK => with_app(App::reinstall_hook),

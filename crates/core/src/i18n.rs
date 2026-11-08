@@ -83,7 +83,7 @@ pub struct Texts {
 
     pub volume_heading: &'static str,
     pub volume_help: &'static str,
-    pub per_notch: &'static str,
+    pub volume_step: &'static str,
     pub percent_suffix: &'static str,
 
     pub display_heading: &'static str,
@@ -96,16 +96,20 @@ pub struct Texts {
     pub position_center: &'static str,
     pub position_bottom: &'static str,
     pub preview: &'static str,
+    pub preview_help: &'static str,
+    pub show: &'static str,
 
-    pub startup_heading: &'static str,
+    pub general_heading: &'static str,
     pub startup_checkbox: &'static str,
     pub startup_failed: fn(error: &str) -> String,
     pub startup_disabled_by_windows: &'static str,
-    pub open_logs: &'static str,
+    pub logs: &'static str,
+    pub open_folder: &'static str,
 
     pub tray_settings: &'static str,
     pub tray_quit: &'static str,
 
+    pub started: &'static str,
     pub muted: &'static str,
     pub percent: fn(value: i32) -> String,
     pub output_disconnected: fn(name: &str) -> String,
@@ -120,7 +124,7 @@ pub const ENGLISH: Texts = Texts {
     settings_save_failed: |error| format!("Could not save the settings: {error}"),
     not_running: "Pinwheel is not running: the wheel and the shortcuts do nothing.",
     start_app: "Start Pinwheel",
-    language: "Language:",
+    language: "Language",
     language_windows: "Same as Windows",
 
     outputs_heading: "Audio outputs",
@@ -133,7 +137,7 @@ pub const ENGLISH: Texts = Texts {
     audio_unavailable: "The Windows audio service is not responding.",
     add_output: "Add an output…",
 
-    shortcut: "Shortcut:",
+    shortcut: "Shortcut",
     capture_prompt: "Press the keys you want… (Esc to cancel)",
     cancel: "Cancel",
     change: "Change…",
@@ -151,12 +155,12 @@ pub const ENGLISH: Texts = Texts {
 
     volume_heading: "Volume",
     volume_help: "Win + mouse wheel changes the volume of the default output.",
-    per_notch: "per wheel notch",
+    volume_step: "Step per wheel notch",
     percent_suffix: "%",
 
     display_heading: "Display",
-    style: "Style:",
-    position: "Position:",
+    style: "Style",
+    position: "Position",
     style_bar: "Thin bar",
     style_pill: "Pill",
     style_big_number: "Big number",
@@ -164,16 +168,20 @@ pub const ENGLISH: Texts = Texts {
     position_center: "Center",
     position_bottom: "Bottom",
     preview: "Preview",
+    preview_help: "Shows the display at the current volume.",
+    show: "Show",
 
-    startup_heading: "Startup",
+    general_heading: "General",
     startup_checkbox: "Start Pinwheel when I sign in",
     startup_failed: |error| format!("Could not change the startup entry: {error}"),
-    startup_disabled_by_windows: "Turned off in the Windows startup apps. Ticking the box turns it back on.",
-    open_logs: "Open the log folder",
+    startup_disabled_by_windows: "Turned off in the Windows startup apps. Turning it on here turns it back on.",
+    logs: "Logs",
+    open_folder: "Open folder",
 
     tray_settings: "Settings",
     tray_quit: "Quit Pinwheel",
 
+    started: "Pinwheel started",
     muted: "Muted",
     percent: |value| format!("{value}%"),
     output_disconnected: |name| format!("{name}: disconnected"),
@@ -188,7 +196,7 @@ pub const FRENCH: Texts = Texts {
     settings_save_failed: |error| format!("Enregistrement impossible : {error}"),
     not_running: "Pinwheel ne tourne pas : la molette et les raccourcis sont inactifs.",
     start_app: "Lancer Pinwheel",
-    language: "Langue :",
+    language: "Langue",
     language_windows: "Celle de Windows",
 
     outputs_heading: "Sorties audio",
@@ -201,7 +209,7 @@ pub const FRENCH: Texts = Texts {
     audio_unavailable: "Le service audio de Windows ne répond pas.",
     add_output: "Ajouter une sortie…",
 
-    shortcut: "Raccourci :",
+    shortcut: "Raccourci",
     capture_prompt: "Appuie sur la combinaison voulue… (Échap pour annuler)",
     cancel: "Annuler",
     change: "Changer…",
@@ -219,12 +227,12 @@ pub const FRENCH: Texts = Texts {
 
     volume_heading: "Volume",
     volume_help: "Win + molette règle le volume de la sortie par défaut.",
-    per_notch: "par cran de molette",
+    volume_step: "Pas par cran de molette",
     percent_suffix: " %",
 
     display_heading: "Affichage",
-    style: "Style :",
-    position: "Position :",
+    style: "Style",
+    position: "Position",
     style_bar: "Barre fine",
     style_pill: "Pilule",
     style_big_number: "Grand chiffre",
@@ -232,16 +240,20 @@ pub const FRENCH: Texts = Texts {
     position_center: "Au centre",
     position_bottom: "En bas",
     preview: "Aperçu",
+    preview_help: "Montre l'affichage au volume actuel.",
+    show: "Afficher",
 
-    startup_heading: "Démarrage",
+    general_heading: "Général",
     startup_checkbox: "Lancer Pinwheel à l'ouverture de session",
     startup_failed: |error| format!("Modification du démarrage impossible : {error}"),
-    startup_disabled_by_windows: "Désactivé dans les applications de démarrage de Windows. Cocher la case le réactive.",
-    open_logs: "Ouvrir le dossier des journaux",
+    startup_disabled_by_windows: "Désactivé dans les applications de démarrage de Windows. L'activer ici le réactive.",
+    logs: "Journaux",
+    open_folder: "Ouvrir le dossier",
 
     tray_settings: "Paramètres",
     tray_quit: "Quitter Pinwheel",
 
+    started: "Pinwheel est lancé",
     muted: "Muet",
     percent: |value| format!("{value} %"),
     output_disconnected: |name| format!("{name} : déconnectée"),

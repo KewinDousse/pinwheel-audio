@@ -234,15 +234,21 @@ impl Hotkey {
         warnings
     }
 
-    /// Writes the modifiers then `key`, the name of the main key.
-    pub fn format_with(&self, f: &mut impl fmt::Write, key: &str, lang: Lang) -> fmt::Result {
-        let modifiers = [
+    /// Names of the held modifiers, in a fixed order.
+    pub fn modifier_names(&self, lang: Lang) -> impl Iterator<Item = &'static str> {
+        [
             (self.ctrl, "Ctrl"),
             (self.alt, "Alt"),
             (self.shift, lang.texts().shift),
             (self.win, "Win"),
-        ];
-        for (_, name) in modifiers.iter().filter(|(on, _)| *on) {
+        ]
+        .into_iter()
+        .filter_map(|(on, name)| on.then_some(name))
+    }
+
+    /// Writes the modifiers then `key`, the name of the main key.
+    pub fn format_with(&self, f: &mut impl fmt::Write, key: &str, lang: Lang) -> fmt::Result {
+        for name in self.modifier_names(lang) {
             write!(f, "{name}+")?;
         }
         f.write_str(key)

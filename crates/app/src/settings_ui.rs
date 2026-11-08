@@ -8,9 +8,10 @@
 use crate::audio::Audio;
 use crate::ipc::{self, InstanceLock, WM_PREVIEW_OSD, WM_RELOAD, wide};
 use crate::keys::{self, Capture, Captured};
+use crate::settings_theme::{self as theme, Palette, Themes};
 use crate::startup::{self, StartupState};
-use crate::{language, paths};
-use eframe::egui;
+use crate::{icon, language, paths};
+use eframe::egui::{self, Margin, RichText};
 use pinwheel_core::devices::{DeviceInfo, Resolution, resolve};
 use pinwheel_core::hotkey::Hotkey;
 use pinwheel_core::i18n::{Lang, Texts};
@@ -27,6 +28,12 @@ use windows::Win32::UI::WindowsAndMessaging::{
 use windows::core::{PCWSTR, w};
 
 const REFRESH_EVERY: Duration = Duration::from_secs(1);
+const PAGE_MARGIN: Margin = Margin {
+    left: 24,
+    right: 24,
+    top: 4,
+    bottom: 24,
+};
 
 pub fn run() {
     let Some(_lock) = InstanceLock::acquire(ipc::SETTINGS_MUTEX) else {
@@ -39,8 +46,8 @@ pub fn run() {
     let title = app.texts().settings_title;
     let mut viewport = egui::ViewportBuilder::default()
         .with_title(title)
-        .with_inner_size([620.0, 720.0])
-        .with_min_inner_size([480.0, 360.0]);
+        .with_inner_size([640.0, 760.0])
+        .with_min_inner_size([520.0, 420.0]);
     if let Some(icon) = window_icon() {
         viewport = viewport.with_icon(icon);
     }
@@ -48,7 +55,11 @@ pub fn run() {
         viewport,
         ..Default::default()
     };
-    if let Err(e) = eframe::run_native(title, options, Box::new(|_| Ok(Box::new(app)))) {
+    let setup = Box::new(|cc: &eframe::CreationContext| {
+        app.themes.install(&cc.egui_ctx);
+        Ok(Box::new(app) as Box<dyn eframe::App>)
+    });
+    if let Err(e) = eframe::run_native(title, options, setup) {
         log::error!("the settings window failed: {e}");
     }
 }
@@ -67,31 +78,21 @@ fn focus_existing_window() {
     }
 }
 
-/// The 256 px image of the embedded icon, for the title bar and taskbar.
+/// The largest image of the icon, for the title bar and taskbar.
 fn window_icon() -> Option<egui::IconData> {
-    let ico: &[u8] = include_bytes!("../res/pinwheel.ico");
-    let count = usize::from(u16::from_le_bytes([ico[4], ico[5]]));
-    (0..count).find_map(|i| {
-        let entry = ico.get(6 + 16 * i..22 + 16 * i)?;
-        if entry[0] != 0 {
-            return None;
-        }
-        let size = u32::from_le_bytes(entry[8..12].try_into().ok()?) as usize;
-        let offset = u32::from_le_bytes(entry[12..16].try_into().ok()?) as usize;
-        let pixmap = tiny_skia::Pixmap::decode_png(ico.get(offset..offset + size)?).ok()?;
-        let rgba = pixmap
-            .pixels()
-            .iter()
-            .flat_map(|p| {
-                let c = p.demultiply();
-                [c.red(), c.green(), c.blue(), c.alpha()]
-            })
-            .collect();
-        Some(egui::IconData {
-            rgba,
-            width: pixmap.width(),
-            height: pixmap.height(),
+    let pixmap = icon::images().into_iter().max_by_key(tiny_skia::Pixmap::width)?;
+    let rgba = pixmap
+        .pixels()
+        .iter()
+        .flat_map(|p| {
+            let c = p.demultiply();
+            [c.red(), c.green(), c.blue(), c.alpha()]
         })
+        .collect();
+    Some(egui::IconData {
+        rgba,
+        width: pixmap.width(),
+        height: pixmap.height(),
     })
 }
 
@@ -112,6 +113,7 @@ struct SettingsApp {
     capture: Option<ActiveCapture>,
     /// Language of the window title, updated when the setting changes.
     title_lang: Lang,
+    themes: Themes,
 }
 
 /// Shortcut being captured for the output at `index`.
@@ -144,6 +146,7 @@ impl SettingsApp {
             error,
             capture: None,
             title_lang: lang,
+            themes: Themes::new(),
         }
     }
 
@@ -244,41 +247,30 @@ impl SettingsApp {
 
     fn banners(&mut self, ui: &mut egui::Ui) {
         let t = self.texts();
+        let palette = self.themes.palette(ui);
         if let Some(error) = &self.error {
-            ui.colored_label(ui.visuals().error_fg_color, error);
+            theme::warning_banner(ui, palette, |ui| {
+                ui.label(RichText::new(error).color(palette.error));
+            });
         }
         if !self.main_running {
-            ui.horizontal_wrapped(|ui| {
-                ui.colored_label(ui.visuals().warn_fg_color, t.not_running);
-                if ui.button(t.start_app).clicked()
-                    && let Ok(exe) = std::env::current_exe()
-                {
-                    let _ = std::process::Command::new(exe).spawn();
-                }
+            theme::warning_banner(ui, palette, |ui| {
+                theme::labelled(ui, t.not_running, None, |ui| {
+                    if ui.button(t.start_app).clicked()
+                        && let Ok(exe) = std::env::current_exe()
+                    {
+                        let _ = std::process::Command::new(exe).spawn();
+                    }
+                });
             });
         }
     }
 
-    fn language_row(&mut self, ui: &mut egui::Ui) {
-        let t = self.texts();
-        ui.horizontal(|ui| {
-            ui.label(t.language);
-            let selected = self.settings.language.map_or(t.language_windows, Lang::native_name);
-            egui::ComboBox::from_id_salt("language")
-                .selected_text(selected)
-                .show_ui(ui, |ui| {
-                    ui.selectable_value(&mut self.settings.language, None, t.language_windows);
-                    for lang in Lang::ALL {
-                        ui.selectable_value(&mut self.settings.language, Some(lang), lang.native_name());
-                    }
-                });
-        });
-    }
-
     fn outputs_section(&mut self, ui: &mut egui::Ui) {
         let (lang, t) = (self.lang(), self.texts());
-        ui.heading(t.outputs_heading);
-        ui.label(t.outputs_help);
+        let palette = self.themes.palette(ui);
+        theme::section_title(ui, t.outputs_heading);
+        ui.label(theme::help(palette, t.outputs_help));
         ui.add_space(4.0);
 
         let mut remove = None;
@@ -289,29 +281,40 @@ impl SettingsApp {
             let refused = self.status.hotkey_errors.contains_key(&self.settings.outputs[index].id);
             let (state, connected) = device_state(&self.settings.outputs[index], &self.devices, t);
             let output = &mut self.settings.outputs[index];
-            egui::Frame::group(ui.style()).show(ui, |ui| {
-                ui.set_width(ui.available_width());
-                ui.horizontal(|ui| {
-                    ui.strong(&output.name);
-                    if connected {
-                        ui.label(state)
-                    } else {
-                        ui.weak(state)
-                    };
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            theme::card(ui, palette, |ui| {
+                let state_color = if connected { palette.success } else { palette.secondary };
+                theme::labelled(
+                    ui,
+                    theme::strong(&output.name),
+                    Some(theme::note(state, state_color)),
+                    |ui| {
                         if ui.button(t.remove).clicked() {
                             remove = Some(index);
                         }
-                    });
+                    },
+                );
+                theme::divider(ui, palette);
+                let action = theme::labelled(ui, t.shortcut, None, |ui| {
+                    hotkey_controls(ui, palette, output.hotkey.as_ref(), capturing == Some(index), lang)
                 });
-                match hotkey_row(ui, output.hotkey.as_ref(), capturing == Some(index), lang) {
+                match action {
                     HotkeyAction::Capture => capture_request = Some(Some(index)),
                     HotkeyAction::StopCapture => capture_request = Some(None),
                     HotkeyAction::Clear => output.hotkey = None,
                     HotkeyAction::None => {}
                 }
-                ui.checkbox(&mut output.communications, t.communications);
-                hotkey_messages(ui, output.hotkey.as_ref(), duplicate_of.as_deref(), refused, lang);
+                hotkey_messages(
+                    ui,
+                    palette,
+                    output.hotkey.as_ref(),
+                    duplicate_of.as_deref(),
+                    refused,
+                    lang,
+                );
+                theme::divider(ui, palette);
+                theme::labelled(ui, t.communications, None, |ui| {
+                    theme::toggle(ui, palette, &mut output.communications, t.communications);
+                });
             });
         }
         match capture_request {
@@ -326,7 +329,7 @@ impl SettingsApp {
         }
 
         if self.audio.is_none() {
-            ui.colored_label(ui.visuals().warn_fg_color, t.audio_unavailable);
+            ui.label(theme::note(t.audio_unavailable, self.themes.palette(ui).warning));
         }
         let available: Vec<DeviceInfo> = self
             .devices
@@ -335,6 +338,7 @@ impl SettingsApp {
             .cloned()
             .collect();
         let mut added = None;
+        ui.add_space(2.0);
         ui.add_enabled_ui(!available.is_empty(), |ui| {
             egui::ComboBox::from_id_salt("add-output")
                 .selected_text(t.add_output)
@@ -359,52 +363,94 @@ impl SettingsApp {
 
     fn volume_section(&mut self, ui: &mut egui::Ui) {
         let t = self.texts();
-        ui.heading(t.volume_heading);
-        ui.label(t.volume_help);
-        ui.add(
-            egui::Slider::new(&mut self.settings.volume_step, STEP_RANGE)
-                .text(t.per_notch)
-                .suffix(t.percent_suffix),
+        let palette = self.themes.palette(ui);
+        theme::section_title(ui, t.volume_heading);
+        let step = &mut self.settings.volume_step;
+        theme::setting_row(
+            ui,
+            palette,
+            t.volume_step,
+            Some(theme::help(palette, t.volume_help)),
+            |ui| {
+                ui.label((t.percent)(i32::from(*step)));
+                ui.add(egui::Slider::new(step, STEP_RANGE).show_value(false));
+            },
         );
     }
 
     fn display_section(&mut self, ui: &mut egui::Ui) {
         let (lang, t) = (self.lang(), self.texts());
-        ui.heading(t.display_heading);
-        ui.horizontal(|ui| {
-            ui.label(t.style);
-            for style in OsdStyle::ALL {
-                ui.radio_value(&mut self.settings.osd.style, style, style.label(lang));
-            }
+        let palette = self.themes.palette(ui);
+        theme::section_title(ui, t.display_heading);
+        let osd = &mut self.settings.osd;
+        theme::setting_row(ui, palette, t.style, None, |ui| {
+            egui::ComboBox::from_id_salt("style")
+                .selected_text(osd.style.label(lang))
+                .show_ui(ui, |ui| {
+                    for style in OsdStyle::ALL {
+                        ui.selectable_value(&mut osd.style, style, style.label(lang));
+                    }
+                });
         });
-        ui.horizontal(|ui| {
-            ui.label(t.position);
-            for position in OsdPosition::ALL {
-                ui.radio_value(&mut self.settings.osd.position, position, position.label(lang));
-            }
+        theme::setting_row(ui, palette, t.position, None, |ui| {
+            egui::ComboBox::from_id_salt("position")
+                .selected_text(osd.position.label(lang))
+                .show_ui(ui, |ui| {
+                    for position in OsdPosition::ALL {
+                        ui.selectable_value(&mut osd.position, position, position.label(lang));
+                    }
+                });
         });
-        if ui
-            .add_enabled(self.main_running, egui::Button::new(t.preview))
-            .clicked()
-        {
-            ipc::notify_main(WM_PREVIEW_OSD);
-        }
+        let main_running = self.main_running;
+        theme::setting_row(
+            ui,
+            palette,
+            t.preview,
+            Some(theme::help(palette, t.preview_help)),
+            |ui| {
+                if ui.add_enabled(main_running, egui::Button::new(t.show)).clicked() {
+                    ipc::notify_main(WM_PREVIEW_OSD);
+                }
+            },
+        );
     }
 
-    fn startup_section(&mut self, ui: &mut egui::Ui) {
+    fn general_section(&mut self, ui: &mut egui::Ui) {
         let t = self.texts();
-        ui.heading(t.startup_heading);
+        let palette = self.themes.palette(ui);
+        theme::section_title(ui, t.general_heading);
+        let language = &mut self.settings.language;
+        theme::setting_row(ui, palette, t.language, None, |ui| {
+            let selected = language.map_or(t.language_windows, Lang::native_name);
+            egui::ComboBox::from_id_salt("language")
+                .selected_text(selected)
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(language, None, t.language_windows);
+                    for lang in Lang::ALL {
+                        ui.selectable_value(language, Some(lang), lang.native_name());
+                    }
+                });
+        });
+
+        let disabled_by_windows = self.startup == StartupState::DisabledByWindows;
+        let help = disabled_by_windows.then(|| theme::note(t.startup_disabled_by_windows, palette.warning));
         let mut enabled = self.startup == StartupState::On;
-        if ui.checkbox(&mut enabled, t.startup_checkbox).changed() {
+        let changed = theme::setting_row(ui, palette, t.startup_checkbox, help, |ui| {
+            theme::toggle(ui, palette, &mut enabled, t.startup_checkbox).changed()
+        });
+        if changed {
             if let Err(e) = startup::set(enabled) {
                 log::error!("changing the startup entry failed: {e}");
                 self.error = Some((t.startup_failed)(&e.to_string()));
             }
             self.startup = startup::state();
         }
-        if self.startup == StartupState::DisabledByWindows {
-            ui.colored_label(ui.visuals().warn_fg_color, t.startup_disabled_by_windows);
-        }
+
+        theme::setting_row(ui, palette, t.logs, None, |ui| {
+            if ui.button(t.open_folder).clicked() {
+                open_folder(&paths::log_dir());
+            }
+        });
     }
 }
 
@@ -420,22 +466,18 @@ impl eframe::App for SettingsApp {
             let title = lang.texts().settings_title.into();
             ui.ctx().send_viewport_cmd(egui::ViewportCommand::Title(title));
         }
-        egui::CentralPanel::default().show(ui, |ui| {
+        let page = egui::Frame::new().fill(ui.visuals().panel_fill);
+        egui::CentralPanel::default().frame(page).show(ui, |ui| {
             egui::ScrollArea::vertical().show(ui, |ui| {
-                self.banners(ui);
-                self.language_row(ui);
-                ui.separator();
-                self.outputs_section(ui);
-                ui.separator();
-                self.volume_section(ui);
-                ui.separator();
-                self.display_section(ui);
-                ui.separator();
-                self.startup_section(ui);
-                ui.separator();
-                if ui.button(self.texts().open_logs).clicked() {
-                    open_folder(&paths::log_dir());
-                }
+                egui::Frame::new().inner_margin(PAGE_MARGIN).show(ui, |ui| {
+                    // The gap between cards.
+                    ui.spacing_mut().item_spacing.y = 4.0;
+                    self.banners(ui);
+                    self.outputs_section(ui);
+                    self.volume_section(ui);
+                    self.display_section(ui);
+                    self.general_section(ui);
+                });
             });
         });
         // A slider being dragged is saved once, when it is released: each
@@ -463,52 +505,65 @@ enum HotkeyAction {
     Clear,
 }
 
-fn hotkey_row(ui: &mut egui::Ui, hotkey: Option<&Hotkey>, capturing: bool, lang: Lang) -> HotkeyAction {
+/// The shortcut's keys and buttons, added right to left.
+fn hotkey_controls(
+    ui: &mut egui::Ui,
+    palette: &Palette,
+    hotkey: Option<&Hotkey>,
+    capturing: bool,
+    lang: Lang,
+) -> HotkeyAction {
     let t = lang.texts();
     let mut action = HotkeyAction::None;
-    ui.horizontal(|ui| {
-        ui.label(t.shortcut);
-        if capturing {
-            ui.strong(t.capture_prompt);
-            if ui.button(t.cancel).clicked() {
-                action = HotkeyAction::StopCapture;
-            }
-            return;
+    if capturing {
+        if ui.button(t.cancel).clicked() {
+            action = HotkeyAction::StopCapture;
         }
-        match hotkey {
-            Some(hotkey) => {
-                ui.monospace(keys::describe(hotkey, lang));
-                if ui.button(t.change).clicked() {
-                    action = HotkeyAction::Capture;
-                }
-                if ui.button(t.clear).clicked() {
-                    action = HotkeyAction::Clear;
-                }
+        theme::keycap(ui, palette, t.capture_prompt, true);
+        return action;
+    }
+    match hotkey {
+        Some(hotkey) => {
+            if ui.button(t.clear).clicked() {
+                action = HotkeyAction::Clear;
             }
-            None => {
-                ui.weak(t.no_shortcut);
-                if ui.button(t.choose).clicked() {
-                    action = HotkeyAction::Capture;
-                }
+            if ui.button(t.change).clicked() {
+                action = HotkeyAction::Capture;
+            }
+            ui.spacing_mut().item_spacing.x = 4.0;
+            for key in keys::describe(hotkey, lang).iter().rev() {
+                theme::keycap(ui, palette, key, false);
             }
         }
-    });
+        None => {
+            if ui.button(t.choose).clicked() {
+                action = HotkeyAction::Capture;
+            }
+            ui.label(RichText::new(t.no_shortcut).color(palette.secondary));
+        }
+    }
     action
 }
 
-fn hotkey_messages(ui: &mut egui::Ui, hotkey: Option<&Hotkey>, duplicate_of: Option<&str>, refused: bool, lang: Lang) {
+fn hotkey_messages(
+    ui: &mut egui::Ui,
+    palette: &Palette,
+    hotkey: Option<&Hotkey>,
+    duplicate_of: Option<&str>,
+    refused: bool,
+    lang: Lang,
+) {
     let Some(hotkey) = hotkey else { return };
     let t = lang.texts();
-    let error = ui.visuals().error_fg_color;
     if let Err(e) = hotkey.validate() {
-        ui.colored_label(error, e.message(lang));
+        ui.label(theme::note(e.message(lang), palette.error));
     } else if let Some(other) = duplicate_of {
-        ui.colored_label(error, (t.duplicate_shortcut)(other));
+        ui.label(theme::note(&(t.duplicate_shortcut)(other), palette.error));
     } else if refused {
-        ui.colored_label(error, t.shortcut_refused);
+        ui.label(theme::note(t.shortcut_refused, palette.error));
     }
     for warning in hotkey.warnings() {
-        ui.colored_label(ui.visuals().warn_fg_color, warning.message(lang));
+        ui.label(theme::note(warning.message(lang), palette.warning));
     }
 }
 

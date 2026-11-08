@@ -7,7 +7,7 @@
 
 use crate::accent;
 use pinwheel_core::i18n::Lang;
-use pinwheel_core::osd::{Content, Fonts, Look, SHADOW_MARGIN, render};
+use pinwheel_core::osd::{Content, Fonts, Look, Rgb, SHADOW_MARGIN, render};
 use pinwheel_core::settings::{OsdPosition, OsdSettings};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
@@ -46,6 +46,8 @@ pub struct Osd {
     fonts: Fonts,
     surface: Option<Surface>,
     fade_start: Option<Instant>,
+    /// Read once per appearance: reading it takes longer than drawing.
+    accent: Option<Rgb>,
 }
 
 impl Osd {
@@ -87,6 +89,7 @@ impl Osd {
             fonts,
             surface: None,
             fade_start: None,
+            accent: None,
         })
     }
 
@@ -107,7 +110,7 @@ impl Osd {
         let look = Look {
             style: settings.style,
             scale,
-            accent: accent::current(),
+            accent: *self.accent.get_or_insert_with(accent::on_dark),
             lang,
         };
         let pixmap = render(content, look, &self.fonts);
@@ -206,6 +209,7 @@ impl Osd {
         self.stop_timers();
         let _ = unsafe { ShowWindow(self.hwnd, SW_HIDE) };
         self.surface = None;
+        self.accent = None;
     }
 
     fn stop_timers(&mut self) {
