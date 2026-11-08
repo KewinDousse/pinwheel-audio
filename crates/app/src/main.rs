@@ -41,11 +41,11 @@ mod tray;
 
 #[cfg(windows)]
 fn main() {
-    let settings_mode = std::env::args().any(|arg| arg == ipc::SETTINGS_ARG);
-    logging::init(if settings_mode { "settings" } else { "main" });
-    if settings_mode {
+    if std::env::args().any(|arg| arg == ipc::SETTINGS_ARG) {
+        logging::init("settings", false);
         settings_ui::run();
     } else {
+        // Starts the logger once it holds the instance lock.
         app::run();
     }
 }

@@ -98,6 +98,8 @@ fn window_icon() -> Option<egui::IconData> {
 struct SettingsApp {
     path: PathBuf,
     settings: Settings,
+    /// The settings as last read from or written to the file.
+    saved: Settings,
     /// Modification time of the file as last read or written.
     file_time: Option<SystemTime>,
     audio: Option<Audio>,
@@ -131,6 +133,7 @@ impl SettingsApp {
         Self {
             file_time: file_time(&path),
             path,
+            saved: settings.clone(),
             settings,
             audio: None,
             devices: Vec::new(),
@@ -205,14 +208,27 @@ impl SettingsApp {
         self.startup = startup::state();
         self.main_running = unsafe { FindWindowW(ipc::MAIN_CLASS, PCWSTR::null()) }.is_ok();
 
-        let time = file_time(&self.path);
-        if time != self.file_time {
-            self.file_time = time;
-            self.settings = settings::load(&self.path).0;
+        if file_time(&self.path) != self.file_time {
+            match settings::load(&self.path) {
+                // Kept as they are, so a failed read cannot turn into saved
+                // defaults; the file is read again on the next refresh.
+                (_, Some(settings::LoadIssue::Io(e))) => log::warn!("reading the settings failed: {e}"),
+                (loaded, issue) => {
+                    if let Some(settings::LoadIssue::Corrupt { backup, .. }) = issue {
+                        self.error = Some((self.texts().settings_corrupt)(&backup.display().to_string()));
+                    }
+                    self.file_time = file_time(&self.path);
+                    self.saved = loaded.clone();
+                    self.settings = loaded;
+                }
+            }
         }
     }
 
     fn save(&mut self) {
+        // Marked as saved even on failure: the error shows, and the next
+        // change tries again instead of every frame.
+        self.saved = self.settings.clone();
         match settings::save(&self.path, &self.settings) {
             Ok(()) => {
                 self.file_time = file_time(&self.path);
@@ -397,8 +413,6 @@ impl eframe::App for SettingsApp {
         self.refresh();
         ui.ctx().request_repaint_after(REFRESH_EVERY);
 
-        // Taken before the capture result lands, so that it gets saved.
-        let before = self.settings.clone();
         self.poll_capture();
         let lang = self.lang();
         if lang != self.title_lang {
@@ -424,7 +438,10 @@ impl eframe::App for SettingsApp {
                 }
             });
         });
-        if self.settings != before {
+        // A slider being dragged is saved once, when it is released: each
+        // save makes the background process register every shortcut again.
+        let dragging = ui.ctx().input(|i| i.pointer.any_down());
+        if self.settings != self.saved && !dragging {
             self.save();
         }
     }

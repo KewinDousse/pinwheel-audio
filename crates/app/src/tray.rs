@@ -64,6 +64,10 @@ impl Tray {
 
     /// Adds the icon. Returns `false` when Explorer is not ready.
     pub fn show(&mut self) -> bool {
+        // A second NIM_ADD fails, which would mark a shown icon as missing.
+        if self.shown {
+            return true;
+        }
         let mut data = self.data();
         data.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
         data.uCallbackMessage = WM_TRAY;

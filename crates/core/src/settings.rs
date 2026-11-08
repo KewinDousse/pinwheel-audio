@@ -170,13 +170,14 @@ pub fn save(path: &Path, settings: &Settings) -> std::io::Result<()> {
 }
 
 /// Writes next to `path`, then renames over it (which replaces the
-/// destination on Windows too).
+/// destination on Windows too). The temporary name holds the process ID:
+/// both processes write the settings, and must not share a temporary file.
 pub(crate) fn write_atomically(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
     }
     let mut tmp_name = path.file_name().unwrap_or_default().to_os_string();
-    tmp_name.push(".tmp");
+    tmp_name.push(format!(".{}.tmp", std::process::id()));
     let tmp = path.with_file_name(tmp_name);
     {
         let mut file = std::fs::File::create(&tmp)?;
@@ -265,7 +266,12 @@ mod tests {
         save(&path, &Settings::default()).unwrap();
         save(&path, &sample()).unwrap();
         assert_eq!(load(&path).0, sample());
-        assert!(!path.with_extension("json.tmp").exists());
+        let leftovers: Vec<_> = std::fs::read_dir(path.parent().unwrap())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_name().to_string_lossy().ends_with(".tmp"))
+            .collect();
+        assert!(leftovers.is_empty());
     }
 
     #[test]

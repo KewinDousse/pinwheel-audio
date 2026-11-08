@@ -116,7 +116,6 @@ impl Osd {
             OsdPosition::Bottom => work.bottom - height - (EDGE_MARGIN_BOTTOM * scale) as i32,
         };
 
-        self.stop_timers();
         let screen = unsafe { GetDC(None) };
         let origin = POINT::default();
         let result = unsafe {
@@ -134,9 +133,11 @@ impl Osd {
         };
         unsafe { ReleaseDC(None, screen) };
         if let Err(e) = result {
+            // What is on screen keeps its timers, so it still fades out.
             log::error!("drawing the display failed: {e}");
             return;
         }
+        self.stop_timers();
         self.surface = Some(surface);
         unsafe {
             let _ = ShowWindow(self.hwnd, SW_SHOWNOACTIVATE);

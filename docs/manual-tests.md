@@ -9,6 +9,9 @@ What the automated tests do not cover. The log (`%LOCALAPPDATA%\Pinwheel\logs\pi
 - [ ] Startup ticked, then sign out and in again: Pinwheel runs.
 - [ ] Turn Pinwheel off in Windows Settings > Apps > Startup: the settings window says so.
 - [ ] Restart Explorer (Task Manager): the icon comes back.
+- [ ] Startup ticked, sign in: a single icon, and "Quit" removes it (no ghost icon).
+- [ ] First run, close the settings without changing anything, then run Pinwheel again: the settings do not open by themselves.
+- [ ] With Pinwheel running, run `pinwheel.exe` from the Start menu: the settings window comes to the front.
 
 ## Win + wheel
 
@@ -26,6 +29,7 @@ What the automated tests do not cover. The log (`%LOCALAPPDATA%\Pinwheel\logs\pi
 ## Display
 
 - [ ] Each style and each position, with the "Preview" button.
+- [ ] Drag the volume step slider: the shortcuts keep working afterwards, and the log shows no burst of saves.
 - [ ] The display stays 1 s then fades out, and a new notch restarts the delay.
 - [ ] It does not take the focus: typing in the active window keeps working.
 - [ ] Two monitors with different scaling: it shows sharp and at the right size on the cursor's monitor.

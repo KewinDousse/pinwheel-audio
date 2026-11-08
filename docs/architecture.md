@@ -63,7 +63,7 @@ Texts come from `crates/core/src/i18n.rs`, in the language of the settings or el
 - **Audio**: only the Core Audio enumerator is kept. Each action asks for the default output again, and an error recreates the enumerator before a second try. An audio service that is slow at sign-in or restarted blocks nothing.
 - **Icon**: retried every 2 s while Explorer is not ready, added again on `TaskbarCreated`.
 - **Shortcuts**: a refused shortcut stays in the settings and is retried every 30 s.
-- **Settings**: atomic write, unreadable file kept aside, never rewritten at startup.
+- **Settings**: atomic write, unreadable file kept aside, a failed read keeps the current settings, never rewritten at startup once it exists. The settings window saves a dragged slider once, when it is released.
 - **Log**: `%LOCALAPPDATA%\Pinwheel\logs\pinwheel.log`, panics included.
 
 ## Display

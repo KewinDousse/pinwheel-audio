@@ -12,8 +12,9 @@ A missing output stays in the settings with its shortcut until the user removes 
 
 The settings file (`%APPDATA%\Pinwheel\settings.json`, JSON with a version number):
 
-- is only written after a user action: a change in the settings window, or a shortcut press that triggers case 2;
-- is written atomically (temporary file, then rename);
+- is only written after a user action: a change in the settings window, or a shortcut press that triggers case 2. The one exception is the first run, when the background process writes the defaults: the file then tells later starts that the first run happened;
+- is written atomically, through a temporary file named after the writing process, then a rename: both processes write it;
+- is kept as it is in memory when a read fails (file locked, for example), so a failed read never becomes saved defaults;
 - when unreadable, is renamed to `settings.json.<timestamp>.bak` before the defaults are used;
 - tolerates missing fields (defaults) and ignores unknown ones.
 

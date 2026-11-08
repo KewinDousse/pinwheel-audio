@@ -14,7 +14,7 @@ use crate::hotkeys::Hotkeys;
 use crate::ipc::{self, InstanceLock, WM_OPEN_SETTINGS, WM_PREVIEW_OSD, WM_RELOAD, WM_TRAY, WM_VOLUME_NOTCHES};
 use crate::osd::Osd;
 use crate::tray::{self, MenuCommand, Tray};
-use crate::{language, paths, startup};
+use crate::{language, logging, paths, startup};
 use pinwheel_core::devices::{Resolution, resolve};
 use pinwheel_core::i18n::{Lang, Texts};
 use pinwheel_core::osd::Content;
@@ -60,10 +60,14 @@ struct App {
 /// Runs the background process until "Quit".
 pub fn run() {
     let Some(_lock) = InstanceLock::acquire(ipc::MAIN_MUTEX) else {
-        // Launching it again opens the settings of the running instance.
+        // Launching it again opens the settings of the running instance. This
+        // process was started by the user, so it can pass on the right to
+        // come to the front, which the background process lacks.
+        let _ = unsafe { AllowSetForegroundWindow(ASFW_ANY) };
         ipc::notify_main(WM_OPEN_SETTINGS);
         return;
     };
+    logging::init("main", true);
     unsafe {
         // The manifest already asks for it; this covers a missing manifest.
         let _ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
@@ -83,6 +87,11 @@ pub fn run() {
     let settings_path = paths::settings_file();
     let first_run = !settings_path.exists();
     let (settings, issue) = settings::load(&settings_path);
+    // The file marks that the first run happened, even if the user changes
+    // nothing in the settings window.
+    if first_run && let Err(e) = settings::save(&settings_path, &settings) {
+        log::error!("writing the default settings failed: {e}");
+    }
 
     let osd = Osd::new(hwnd)
         .inspect_err(|e| log::error!("creating the display failed: {e}"))
@@ -253,10 +262,15 @@ impl App {
     }
 
     fn reload(&mut self) {
-        let (settings, issue) = settings::load(&paths::settings_file());
-        self.settings = settings;
-        self.report_load_issue(issue);
-        self.register_hotkeys();
+        match settings::load(&paths::settings_file()) {
+            // A failed read keeps the shortcuts that are registered.
+            (_, Some(LoadIssue::Io(e))) => log::error!("reading the settings failed, keeping the current ones: {e}"),
+            (settings, issue) => {
+                self.settings = settings;
+                self.report_load_issue(issue);
+                self.register_hotkeys();
+            }
+        }
     }
 
     fn report_load_issue(&mut self, issue: Option<LoadIssue>) {
@@ -310,8 +324,8 @@ impl App {
         }
     }
 
+    /// The settings window saves, and so sends `WM_RELOAD`, before asking.
     fn preview(&mut self) {
-        self.reload();
         if let Some(volume) = self.with_audio(Audio::volume) {
             self.show(&Content::Volume(volume));
         }
