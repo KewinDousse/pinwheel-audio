@@ -158,7 +158,11 @@ impl Themes {
     }
 
     pub fn palette(&self, ui: &egui::Ui) -> &Palette {
-        if ui.visuals().dark_mode { &self.dark } else { &self.light }
+        if ui.visuals().dark_mode {
+            &self.dark
+        } else {
+            &self.light
+        }
     }
 }
 
@@ -168,7 +172,11 @@ fn fonts() -> FontDefinitions {
     let dir = PathBuf::from(std::env::var_os("WINDIR").unwrap_or_else(|| "C:\\Windows".into())).join("Fonts");
     let read = |name: &str| std::fs::read(dir.join(name)).ok();
     let mut fonts = FontDefinitions::default();
-    let fallbacks = fonts.families.get(&FontFamily::Proportional).cloned().unwrap_or_default();
+    let fallbacks = fonts
+        .families
+        .get(&FontFamily::Proportional)
+        .cloned()
+        .unwrap_or_default();
 
     let (regular, semibold) = if let Some(variable) = read("SegUIVar.ttf") {
         let mut semibold = FontData::from_owned(variable.clone());
@@ -260,14 +268,18 @@ pub fn labelled<R>(
         .wrap()
         .show(
             ui,
-            |ui| {
-                ui.vertical(|ui| {
-                    ui.spacing_mut().item_spacing.y = 2.0;
-                    ui.label(title);
-                    if let Some(help) = help {
+            |ui| match help {
+                Some(help) => {
+                    ui.vertical(|ui| {
+                        ui.spacing_mut().item_spacing.y = 2.0;
+                        ui.label(title);
                         ui.label(help);
-                    }
-                });
+                    });
+                }
+                // Alone, the title stays centred on the control.
+                None => {
+                    ui.label(title);
+                }
             },
             control,
         )
@@ -279,8 +291,11 @@ pub fn divider(ui: &mut egui::Ui, palette: &Palette) {
     ui.add_space(4.0);
     let rect = ui.available_rect_before_wrap();
     let y = rect.top();
-    ui.painter()
-        .hline(rect.left() - 16.0..=rect.right() + 16.0, y, Stroke::new(1.0, palette.card_stroke));
+    ui.painter().hline(
+        rect.left() - 16.0..=rect.right() + 16.0,
+        y,
+        Stroke::new(1.0, palette.card_stroke),
+    );
     ui.add_space(5.0);
 }
 
@@ -298,7 +313,11 @@ pub fn warning_banner(ui: &mut egui::Ui, palette: &Palette, add: impl FnOnce(&mu
 
 /// A key of a shortcut, drawn as a keycap.
 pub fn keycap(ui: &mut egui::Ui, palette: &Palette, text: &str, highlighted: bool) {
-    let stroke = if highlighted { palette.accent } else { palette.control_stroke };
+    let stroke = if highlighted {
+        palette.accent
+    } else {
+        palette.control_stroke
+    };
     egui::Frame::new()
         .fill(palette.control)
         .stroke(Stroke::new(1.0, stroke))
@@ -334,7 +353,11 @@ pub fn toggle(ui: &mut egui::Ui, palette: &Palette, on: &mut bool, label: &str) 
                 Stroke::new(1.0, palette.secondary),
                 StrokeKind::Inside,
             );
-            painter.circle_filled(egui::pos2(rect.left() + radius, center_y), knob - 1.0, palette.secondary);
+            painter.circle_filled(
+                egui::pos2(rect.left() + radius, center_y),
+                knob - 1.0,
+                palette.secondary,
+            );
         }
     }
     response

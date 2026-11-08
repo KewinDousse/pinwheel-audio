@@ -156,7 +156,6 @@ unsafe extern "system" fn keyboard_proc(code: i32, wparam: WPARAM, lparam: LPARA
     if code == HC_ACTION as i32 {
         let info = unsafe { &*(lparam.0 as *const KBDLLHOOKSTRUCT) };
         let vk = VIRTUAL_KEY(info.vkCode as u16);
-        log::info!("PROBE main hook: vk {:#x} msg {:#x}", vk.0, wparam.0);
         if (vk == VK_LWIN || vk == VK_RWIN) && info.dwExtraInfo != INJECTED_TAG {
             match wparam.0 as u32 {
                 // A first press, not a repeat: Win was up before this event.

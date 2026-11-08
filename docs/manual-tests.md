@@ -56,7 +56,7 @@ What the automated tests do not cover. The log (`%LOCALAPPDATA%\Pinwheel\logs\pi
 
 ## Shortcut capture
 
-- [ ] Set Win+E: the Explorer does not open, the window shows the Win and E keys and the Win warning.
+- [ ] Set Win+F1: the window shows the Win and F1 keys and the Win warning.
 - [ ] Set a combination already given to another output: it does not switch outputs during the capture.
 - [ ] Set right Ctrl + left Shift + a letter, releasing the modifiers in any order: the combination is complete.
 - [ ] Set a single key (a letter, then F13): the warning shows for the letter, not for F13.

@@ -177,7 +177,6 @@ impl SettingsApp {
         let Some(active) = &self.capture else { return };
         let index = active.index;
         let Some(result) = active.capture.poll() else { return };
-        log::info!("PROBE ui got {result:?}");
         self.capture = None;
         match result {
             Captured::Hotkey(hotkey) => {
@@ -304,7 +303,14 @@ impl SettingsApp {
                     HotkeyAction::Clear => output.hotkey = None,
                     HotkeyAction::None => {}
                 }
-                hotkey_messages(ui, palette, output.hotkey.as_ref(), duplicate_of.as_deref(), refused, lang);
+                hotkey_messages(
+                    ui,
+                    palette,
+                    output.hotkey.as_ref(),
+                    duplicate_of.as_deref(),
+                    refused,
+                    lang,
+                );
                 theme::divider(ui, palette);
                 theme::labelled(ui, t.communications, None, |ui| {
                     theme::toggle(ui, palette, &mut output.communications, t.communications);
@@ -360,10 +366,16 @@ impl SettingsApp {
         let palette = self.themes.palette(ui);
         theme::section_title(ui, t.volume_heading);
         let step = &mut self.settings.volume_step;
-        theme::setting_row(ui, palette, t.volume_step, Some(theme::help(palette, t.volume_help)), |ui| {
-            ui.label((t.percent)(i32::from(*step)));
-            ui.add(egui::Slider::new(step, STEP_RANGE).show_value(false));
-        });
+        theme::setting_row(
+            ui,
+            palette,
+            t.volume_step,
+            Some(theme::help(palette, t.volume_help)),
+            |ui| {
+                ui.label((t.percent)(i32::from(*step)));
+                ui.add(egui::Slider::new(step, STEP_RANGE).show_value(false));
+            },
+        );
     }
 
     fn display_section(&mut self, ui: &mut egui::Ui) {
@@ -390,11 +402,17 @@ impl SettingsApp {
                 });
         });
         let main_running = self.main_running;
-        theme::setting_row(ui, palette, t.preview, Some(theme::help(palette, t.preview_help)), |ui| {
-            if ui.add_enabled(main_running, egui::Button::new(t.show)).clicked() {
-                ipc::notify_main(WM_PREVIEW_OSD);
-            }
-        });
+        theme::setting_row(
+            ui,
+            palette,
+            t.preview,
+            Some(theme::help(palette, t.preview_help)),
+            |ui| {
+                if ui.add_enabled(main_running, egui::Button::new(t.show)).clicked() {
+                    ipc::notify_main(WM_PREVIEW_OSD);
+                }
+            },
+        );
     }
 
     fn general_section(&mut self, ui: &mut egui::Ui) {
@@ -440,13 +458,6 @@ impl eframe::App for SettingsApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.refresh();
         ui.ctx().request_repaint_after(REFRESH_EVERY);
-        ui.ctx().input(|i| {
-            for event in &i.events {
-                if let egui::Event::Key { key, pressed, modifiers, .. } = event {
-                    log::info!("PROBE egui key {key:?} pressed={pressed} {modifiers:?}");
-                }
-            }
-        });
 
         self.poll_capture();
         let lang = self.lang();

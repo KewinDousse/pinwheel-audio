@@ -59,11 +59,15 @@ When the settings window does not open at startup (every start but the first), t
 
 ## Shortcut capture
 
-In the settings window, "Set…" starts `keys::Capture`, which installs a low-level keyboard hook on a `MessageThread`. While the capture lasts, the hook swallows every key: neither the shell nor the background process sees them, so Win+E does not open the Explorer and existing shortcuts do not fire. Any key, Win combinations included, can be chosen this way.
+In the settings window, "Set…" starts `keys::Capture`, which reads the keyboard through Raw Input (`RIDEV_INPUTSINK`) on a message-only window of a `MessageThread`. Low-level keyboard hooks cannot do it: Windows does not call them, in any process, for the keys it sends to the settings window (seen on Windows 11, reproduced on Windows Server 2025, cause not found). Raw Input sees every key, Win included, but cannot stop one:
+
+- the background process suspends its shortcuts while the capture lasts (`WM_CAPTURE_BEGIN`, `WM_CAPTURE_END`), and brings them back by itself after 20 s in case the settings window closes without saying so;
+- a Win combination the shell reserves, such as Win+E, still does what Windows gives it while it is captured.
 
 - The combination is complete at the first press of a key that is not a modifier. Ctrl, Alt, Shift and Win are tracked on the left and right side (`HeldModifiers`), so that releasing one does not forget the other.
-- Escape alone cancels. The capture also ends by itself after 15 s, or as soon as another app takes the focus: the hook is global, and a key typed elsewhere must not be stolen.
+- Escape alone cancels. The capture also ends by itself after 15 s, or as soon as another app takes the focus: Raw Input also receives the keys typed elsewhere.
 - Injected keys are accepted, since macro software (G Hub, Synapse, AutoHotkey) sends its keys that way. Only `vkE8`, sent by the background process's keyboard hook, is ignored.
+- Raw Input reports Ctrl, Alt and Shift without their side: the scan code and the `E0` flag give it back.
 - `Hotkey::validate` refuses a combination with no main key, and F12, which Windows reserves. `Hotkey::warnings` flags those that work but get in the way: Win, or a combination without Ctrl, Alt or Win, whose key stops working in other apps (F13 to F24 excepted).
 
 ## Interface language

@@ -23,7 +23,10 @@ pub enum Content {
     /// A short notice, such as an output that is unplugged.
     Notice(String),
     /// Pinwheel just started, with the app icon in its sizes.
-    Started { text: String, icons: Vec<Pixmap> },
+    Started {
+        text: String,
+        icons: Vec<Pixmap>,
+    },
 }
 
 type Rgba = [u8; 4];
@@ -551,7 +554,10 @@ mod tests {
         };
         let content = Content::Started {
             text: String::new(),
-            icons: vec![solid(16, Color::from_rgba8(255, 0, 0, 255)), solid(32, Color::from_rgba8(0, 255, 0, 255))],
+            icons: vec![
+                solid(16, Color::from_rgba8(255, 0, 0, 255)),
+                solid(32, Color::from_rgba8(0, 255, 0, 255)),
+            ],
         };
         // 20 logical pixels at 150 % need 30: the 32 px image, not the 16 px one.
         let pixmap = render(&content, look(1.5), &no_fonts());
