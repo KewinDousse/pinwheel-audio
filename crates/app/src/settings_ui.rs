@@ -441,6 +441,13 @@ impl eframe::App for SettingsApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.refresh();
         ui.ctx().request_repaint_after(REFRESH_EVERY);
+        ui.ctx().input(|i| {
+            for event in &i.events {
+                if let egui::Event::Key { key, pressed, modifiers, .. } = event {
+                    log::info!("PROBE egui key {key:?} pressed={pressed} {modifiers:?}");
+                }
+            }
+        });
 
         self.poll_capture();
         let lang = self.lang();
