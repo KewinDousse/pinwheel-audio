@@ -3,10 +3,14 @@
 //! Run from the workspace root: `cargo run -p make-icon`.
 //! The output is committed, so the Windows build needs no image tooling.
 
-use tiny_skia::{FillRule, Paint, PathBuilder, Pixmap, Stroke, Transform};
+use tiny_skia::{FillRule, Mask, Paint, PathBuilder, Pixmap, Rect, Stroke, Transform};
 
 const SIZES: [u32; 6] = [16, 20, 24, 32, 48, 256];
 const OUTPUT: &str = "crates/app/res/pinwheel.ico";
+
+const MAGENTA: [u8; 3] = [0xFF, 0x2E, 0x88];
+const WHITE: [u8; 3] = [0xFF, 0xFF, 0xFF];
+const YELLOW: [u8; 3] = [0xFF, 0xE6, 0x00];
 
 fn main() {
     let pngs: Vec<(u32, Vec<u8>)> = SIZES
@@ -17,92 +21,114 @@ fn main() {
     println!("{OUTPUT} written ({} sizes)", pngs.len());
 }
 
-/// The Pinwheel badge (see the branding kit): a black pin with four coloured
-/// blades, drawn on a 100-unit grid then scaled. From 32 px up it sits on a
-/// yellow tile; smaller sizes drop the tile and the inner ring to stay legible.
+/// One drawing of the crossing, on a 100-unit grid.
+struct Crossing {
+    /// Stripe positions along each diagonal, in steps from the centre.
+    stripes: &'static [f32],
+    step: f32,
+    stripe_width: f32,
+    /// Length of a stripe, across its diagonal.
+    band: f32,
+    hub_radius: f32,
+    hub_ring: f32,
+}
+
+/// Fewer, thicker stripes as the icon shrinks, so that they stay apart.
+fn crossing(size: u32) -> Crossing {
+    match size {
+        0..=16 => Crossing {
+            stripes: &[-2.0, 2.0],
+            step: 23.0,
+            stripe_width: 17.0,
+            band: 34.0,
+            hub_radius: 15.0,
+            hub_ring: 8.0,
+        },
+        17..=24 => Crossing {
+            stripes: &[-2.0, -1.0, 1.0, 2.0],
+            step: 21.0,
+            stripe_width: 13.0,
+            band: 30.0,
+            hub_radius: 13.0,
+            hub_ring: 7.0,
+        },
+        _ => Crossing {
+            stripes: &[-3.0, -2.0, -1.0, 1.0, 2.0, 3.0],
+            step: 15.0,
+            stripe_width: 9.0,
+            band: 26.0,
+            hub_radius: 11.0,
+            hub_ring: 6.0,
+        },
+    }
+}
+
+/// The Pinwheel icon: a diagonal pedestrian crossing, Shibuya style, in
+/// white on a magenta tile, with a yellow hub.
 fn draw(size: u32) -> Pixmap {
     let mut pixmap = Pixmap::new(size, size).unwrap();
-    let small = size <= 24;
     let scale = size as f32 / 100.0;
-    let mut transform = Transform::from_scale(scale, scale);
+    let transform = Transform::from_scale(scale, scale);
+    let shape = crossing(size);
+    let tile = rounded_rect(0.0, 0.0, 100.0, 100.0, 22.0);
+    let mut clip = Mask::new(size, size).unwrap();
+    clip.fill_path(&tile, FillRule::Winding, true, transform);
 
+    pixmap.fill_path(&tile, &paint(MAGENTA), FillRule::Winding, transform, None);
+    let stripes = {
+        let mut pb = PathBuilder::new();
+        for k in shape.stripes {
+            let x = 50.0 - shape.stripe_width / 2.0 + k * shape.step;
+            let rect = Rect::from_xywh(x, 50.0 - shape.band / 2.0, shape.stripe_width, shape.band).unwrap();
+            pb.push_rect(rect);
+        }
+        pb.finish().unwrap()
+    };
+    for angle in [45.0, -45.0] {
+        let rotation = Transform::from_rotate_at(angle, 50.0, 50.0);
+        pixmap.fill_path(
+            &stripes,
+            &paint(WHITE),
+            FillRule::Winding,
+            transform.pre_concat(rotation),
+            Some(&clip),
+        );
+    }
+
+    let hub = PathBuilder::from_circle(50.0, 50.0, shape.hub_radius).unwrap();
+    pixmap.fill_path(&hub, &paint(YELLOW), FillRule::Winding, transform, Some(&clip));
+    let ring = Stroke {
+        width: shape.hub_ring,
+        ..Stroke::default()
+    };
+    pixmap.stroke_path(&hub, &paint(MAGENTA), &ring, transform, Some(&clip));
+    pixmap
+}
+
+fn paint(colour: [u8; 3]) -> Paint<'static> {
     let mut paint = Paint {
         anti_alias: true,
         ..Paint::default()
     };
-
-    if !small {
-        paint.set_color_rgba8(0xFF, 0xE6, 0x00, 0xFF);
-        let tile = rounded_rect(0.0, 0.0, 100.0, 100.0, 22.0);
-        pixmap.fill_path(&tile, &paint, FillRule::Winding, transform, None);
-        transform = transform.pre_translate(10.0, 10.0).pre_scale(0.8, 0.8);
-    }
-
-    paint.set_color_rgba8(0x11, 0x11, 0x11, 0xFF);
-    pixmap.fill_path(
-        &circle(50.0, 50.0, if small { 49.0 } else { 46.0 }),
-        &paint,
-        FillRule::Winding,
-        transform,
-        None,
-    );
-
-    if !small {
-        paint.set_color_rgba8(0xFF, 0xFF, 0xFF, 0xFF);
-        let ring = Stroke {
-            width: 3.0,
-            ..Stroke::default()
-        };
-        pixmap.stroke_path(&circle(50.0, 50.0, 42.0), &paint, &ring, transform, None);
-    }
-
-    let blade = {
-        let mut pb = PathBuilder::new();
-        pb.move_to(50.0, 50.0);
-        pb.line_to(50.0, 15.0);
-        pb.cubic_to(68.0, 15.0, 80.0, 28.0, 80.0, 46.0);
-        pb.close();
-        pb.finish().unwrap()
-    };
-    let colours = [
-        [0xFF, 0x2E, 0x88],
-        [0xFF, 0xE6, 0x00],
-        [0x00, 0xC2, 0xFF],
-        [0xFF, 0xFF, 0xFF],
-    ];
-    for (quarter, [r, g, b]) in colours.into_iter().enumerate() {
-        paint.set_color_rgba8(r, g, b, 0xFF);
-        let rotation = Transform::from_rotate_at(90.0 * quarter as f32, 50.0, 50.0);
-        pixmap.fill_path(&blade, &paint, FillRule::Winding, transform.pre_concat(rotation), None);
-    }
-
-    let hub = circle(50.0, 50.0, if small { 8.0 } else { 6.0 });
-    paint.set_color_rgba8(0x11, 0x11, 0x11, 0xFF);
-    pixmap.fill_path(&hub, &paint, FillRule::Winding, transform, None);
-    paint.set_color_rgba8(0xFF, 0xFF, 0xFF, 0xFF);
-    let hub_outline = Stroke {
-        width: if small { 4.0 } else { 2.5 },
-        ..Stroke::default()
-    };
-    pixmap.stroke_path(&hub, &paint, &hub_outline, transform, None);
-    pixmap
+    paint.set_color_rgba8(colour[0], colour[1], colour[2], 0xFF);
+    paint
 }
 
-fn circle(cx: f32, cy: f32, r: f32) -> tiny_skia::Path {
-    PathBuilder::from_circle(cx, cy, r).unwrap()
-}
-
+/// Rounded rectangle with circular corners (cubic Bézier approximation).
 fn rounded_rect(x: f32, y: f32, w: f32, h: f32, r: f32) -> tiny_skia::Path {
+    const KAPPA: f32 = 0.552_284_8;
+    let k = r * KAPPA;
+    let (right, bottom) = (x + w, y + h);
     let mut pb = PathBuilder::new();
     pb.move_to(x + r, y);
-    pb.line_to(x + w - r, y);
-    pb.quad_to(x + w, y, x + w, y + r);
-    pb.line_to(x + w, y + h - r);
-    pb.quad_to(x + w, y + h, x + w - r, y + h);
-    pb.line_to(x + r, y + h);
-    pb.quad_to(x, y + h, x, y + h - r);
+    pb.line_to(right - r, y);
+    pb.cubic_to(right - r + k, y, right, y + r - k, right, y + r);
+    pb.line_to(right, bottom - r);
+    pb.cubic_to(right, bottom - r + k, right - r + k, bottom, right - r, bottom);
+    pb.line_to(x + r, bottom);
+    pb.cubic_to(x + r - k, bottom, x, bottom - r + k, x, bottom - r);
     pb.line_to(x, y + r);
-    pb.quad_to(x, y, x + r, y);
+    pb.cubic_to(x, y + r - k, x + r - k, y, x + r, y);
     pb.close();
     pb.finish().unwrap()
 }
