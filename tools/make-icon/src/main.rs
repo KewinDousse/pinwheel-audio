@@ -1,4 +1,4 @@
-//! Draws the SoundDock icon and writes it as a multi-size `.ico`.
+//! Draws the Pinwheel icon and writes it as a multi-size `.ico`.
 //!
 //! Run from the workspace root: `cargo run -p make-icon`.
 //! The output is committed, so the Windows build needs no image tooling.
@@ -6,7 +6,7 @@
 use tiny_skia::{FillRule, Paint, PathBuilder, Pixmap, Stroke, Transform};
 
 const SIZES: [u32; 6] = [16, 20, 24, 32, 48, 256];
-const OUTPUT: &str = "crates/app/res/sounddock.ico";
+const OUTPUT: &str = "crates/app/res/pinwheel.ico";
 
 fn main() {
     let pngs: Vec<(u32, Vec<u8>)> = SIZES
@@ -17,52 +17,79 @@ fn main() {
     println!("{OUTPUT} written ({} sizes)", pngs.len());
 }
 
-/// Rounded blue tile with a white speaker and two sound waves, drawn on a
-/// 64-unit grid then scaled.
+/// The Pinwheel badge (see the branding kit): a black pin with four coloured
+/// blades, drawn on a 100-unit grid then scaled. From 32 px up it sits on a
+/// yellow tile; smaller sizes drop the tile and the inner ring to stay legible.
 fn draw(size: u32) -> Pixmap {
     let mut pixmap = Pixmap::new(size, size).unwrap();
-    let scale = size as f32 / 64.0;
-    let transform = Transform::from_scale(scale, scale);
+    let small = size <= 24;
+    let scale = size as f32 / 100.0;
+    let mut transform = Transform::from_scale(scale, scale);
 
     let mut paint = Paint {
         anti_alias: true,
         ..Paint::default()
     };
 
-    paint.set_color_rgba8(0x25, 0x63, 0xEB, 0xFF);
-    let tile = rounded_rect(2.0, 2.0, 60.0, 60.0, 14.0);
-    pixmap.fill_path(&tile, &paint, FillRule::Winding, transform, None);
+    if !small {
+        paint.set_color_rgba8(0xFF, 0xE6, 0x00, 0xFF);
+        let tile = rounded_rect(0.0, 0.0, 100.0, 100.0, 22.0);
+        pixmap.fill_path(&tile, &paint, FillRule::Winding, transform, None);
+        transform = transform.pre_translate(10.0, 10.0).pre_scale(0.8, 0.8);
+    }
 
-    paint.set_color_rgba8(0xFF, 0xFF, 0xFF, 0xFF);
-    let mut speaker = PathBuilder::new();
-    speaker.move_to(12.0, 25.0);
-    speaker.line_to(21.0, 25.0);
-    speaker.line_to(32.0, 15.0);
-    speaker.line_to(32.0, 49.0);
-    speaker.line_to(21.0, 39.0);
-    speaker.line_to(12.0, 39.0);
-    speaker.close();
-    pixmap.fill_path(&speaker.finish().unwrap(), &paint, FillRule::Winding, transform, None);
+    paint.set_color_rgba8(0x11, 0x11, 0x11, 0xFF);
+    pixmap.fill_path(
+        &circle(50.0, 50.0, if small { 49.0 } else { 46.0 }),
+        &paint,
+        FillRule::Winding,
+        transform,
+        None,
+    );
 
-    // Small sizes keep a single, thicker wave to stay legible.
-    let waves: &[(f32, f32)] = if size <= 24 {
-        &[(9.0, 5.5)]
-    } else {
-        &[(8.0, 4.5), (16.0, 4.5)]
-    };
-    for &(radius, width) in waves {
-        let mut arc = PathBuilder::new();
-        let (cx, cy) = (34.0, 32.0);
-        arc.move_to(cx + radius * 0.6, cy - radius * 0.8);
-        arc.quad_to(cx + radius * 1.35, cy, cx + radius * 0.6, cy + radius * 0.8);
-        let stroke = Stroke {
-            width,
-            line_cap: tiny_skia::LineCap::Round,
+    if !small {
+        paint.set_color_rgba8(0xFF, 0xFF, 0xFF, 0xFF);
+        let ring = Stroke {
+            width: 3.0,
             ..Stroke::default()
         };
-        pixmap.stroke_path(&arc.finish().unwrap(), &paint, &stroke, transform, None);
+        pixmap.stroke_path(&circle(50.0, 50.0, 42.0), &paint, &ring, transform, None);
     }
+
+    let blade = {
+        let mut pb = PathBuilder::new();
+        pb.move_to(50.0, 50.0);
+        pb.line_to(50.0, 15.0);
+        pb.cubic_to(68.0, 15.0, 80.0, 28.0, 80.0, 46.0);
+        pb.close();
+        pb.finish().unwrap()
+    };
+    let colours = [
+        [0xFF, 0x2E, 0x88],
+        [0xFF, 0xE6, 0x00],
+        [0x00, 0xC2, 0xFF],
+        [0xFF, 0xFF, 0xFF],
+    ];
+    for (quarter, [r, g, b]) in colours.into_iter().enumerate() {
+        paint.set_color_rgba8(r, g, b, 0xFF);
+        let rotation = Transform::from_rotate_at(90.0 * quarter as f32, 50.0, 50.0);
+        pixmap.fill_path(&blade, &paint, FillRule::Winding, transform.pre_concat(rotation), None);
+    }
+
+    let hub = circle(50.0, 50.0, if small { 8.0 } else { 6.0 });
+    paint.set_color_rgba8(0x11, 0x11, 0x11, 0xFF);
+    pixmap.fill_path(&hub, &paint, FillRule::Winding, transform, None);
+    paint.set_color_rgba8(0xFF, 0xFF, 0xFF, 0xFF);
+    let hub_outline = Stroke {
+        width: if small { 4.0 } else { 2.5 },
+        ..Stroke::default()
+    };
+    pixmap.stroke_path(&hub, &paint, &hub_outline, transform, None);
     pixmap
+}
+
+fn circle(cx: f32, cy: f32, r: f32) -> tiny_skia::Path {
+    PathBuilder::from_circle(cx, cy, r).unwrap()
 }
 
 fn rounded_rect(x: f32, y: f32, w: f32, h: f32, r: f32) -> tiny_skia::Path {

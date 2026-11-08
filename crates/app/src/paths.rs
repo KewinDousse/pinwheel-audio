@@ -1,8 +1,8 @@
-//! Where SoundDock keeps its files.
+//! Where Pinwheel keeps its files.
 
 use std::path::PathBuf;
 
-const APP_DIR: &str = "SoundDock";
+const APP_DIR: &str = "Pinwheel";
 
 fn known_dir(var: &str) -> PathBuf {
     std::env::var_os(var)
@@ -10,17 +10,17 @@ fn known_dir(var: &str) -> PathBuf {
         .join(APP_DIR)
 }
 
-/// `%APPDATA%\SoundDock\settings.json`: roams with the Windows profile.
+/// `%APPDATA%\Pinwheel\settings.json`: roams with the Windows profile.
 pub fn settings_file() -> PathBuf {
     known_dir("APPDATA").join("settings.json")
 }
 
-/// `%LOCALAPPDATA%\SoundDock\status.json`.
+/// `%LOCALAPPDATA%\Pinwheel\status.json`.
 pub fn status_file() -> PathBuf {
     known_dir("LOCALAPPDATA").join("status.json")
 }
 
-/// `%LOCALAPPDATA%\SoundDock\logs`.
+/// `%LOCALAPPDATA%\Pinwheel\logs`.
 pub fn log_dir() -> PathBuf {
     known_dir("LOCALAPPDATA").join("logs")
 }

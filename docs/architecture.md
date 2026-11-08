@@ -4,14 +4,14 @@
 
 | Mode | Lancement | Rôle |
 |:--|:--|:--|
-| Arrière-plan | `sounddock.exe` | Icône, hook de la molette, raccourcis, affichage. Une seule instance (mutex `Local\SoundDock.Main`). |
-| Paramètres | `sounddock.exe --settings` | Fenêtre egui. Une seule instance (mutex `Local\SoundDock.Settings`). |
+| Arrière-plan | `pinwheel.exe` | Icône, hook de la molette, raccourcis, affichage. Une seule instance (mutex `Local\Pinwheel.Main`). |
+| Paramètres | `pinwheel.exe --settings` | Fenêtre egui. Une seule instance (mutex `Local\Pinwheel.Settings`). |
 
 La fenêtre de paramètres est un processus à part : la bibliothèque d'interface (egui, wgpu) n'est chargée que quand elle est ouverte, et le processus d'arrière-plan reste léger.
 
 Communication :
 
-- Paramètres → arrière-plan : messages postés à la fenêtre cachée de classe `SoundDock.Main` (`crates/app/src/ipc.rs`). `WM_RELOAD` après chaque enregistrement, `WM_PREVIEW_OSD` pour l'aperçu.
+- Paramètres → arrière-plan : messages postés à la fenêtre cachée de classe `Pinwheel.Main` (`crates/app/src/ipc.rs`). `WM_RELOAD` après chaque enregistrement, `WM_PREVIEW_OSD` pour l'aperçu.
 - Arrière-plan → paramètres : `status.json` (raccourcis refusés), et `settings.json` quand une sortie a changé d'identifiant. La fenêtre relit les deux chaque seconde.
 
 ## Processus d'arrière-plan
@@ -60,7 +60,7 @@ Dans la fenêtre de paramètres, « Choisir… » lance `keys::Capture`, qui pos
 - **Icône** : réessayée toutes les 2 s si Explorer n'est pas prêt, recréée sur `TaskbarCreated`.
 - **Raccourcis** : un raccourci refusé reste dans les paramètres et est réessayé toutes les 30 s.
 - **Paramètres** : écriture atomique, fichier illisible gardé de côté, jamais réécrit au démarrage.
-- **Journal** : `%LOCALAPPDATA%\SoundDock\logs\sounddock.log`, avec les paniques.
+- **Journal** : `%LOCALAPPDATA%\Pinwheel\logs\pinwheel.log`, avec les paniques.
 
 ## Affichage
 

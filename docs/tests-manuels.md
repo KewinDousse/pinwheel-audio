@@ -1,13 +1,13 @@
 # Tests manuels sous Windows
 
-Ce que les tests automatiques ne couvrent pas. Le journal (`%LOCALAPPDATA%\SoundDock\logs\sounddock.log`) aide à comprendre un échec.
+Ce que les tests automatiques ne couvrent pas. Le journal (`%LOCALAPPDATA%\Pinwheel\logs\pinwheel.log`) aide à comprendre un échec.
 
 ## Démarrage
 
 - [ ] Premier lancement : l'icône apparaît, la fenêtre de paramètres s'ouvre.
-- [ ] Relancer l'exécutable : un seul SoundDock tourne, les paramètres s'ouvrent.
-- [ ] Démarrage automatique coché, puis fermeture et réouverture de session : SoundDock tourne.
-- [ ] Désactiver SoundDock dans Paramètres Windows > Applications > Démarrage : la fenêtre de paramètres l'indique.
+- [ ] Relancer l'exécutable : un seul Pinwheel tourne, les paramètres s'ouvrent.
+- [ ] Démarrage automatique coché, puis fermeture et réouverture de session : Pinwheel tourne.
+- [ ] Désactiver Pinwheel dans Paramètres Windows > Applications > Démarrage : la fenêtre de paramètres l'indique.
 - [ ] Redémarrer Explorer (Gestionnaire des tâches) : l'icône revient.
 
 ## Win + molette
@@ -15,7 +15,7 @@ Ce que les tests automatiques ne couvrent pas. Le journal (`%LOCALAPPDATA%\Sound
 - [ ] Dans l'Explorateur et dans un navigateur : le volume change par pas de 10 %, la page ne défile pas.
 - [ ] Relâcher Win après avoir tourné la molette : le menu Démarrer ne s'ouvre pas.
 - [ ] Win seul, sans molette : le menu Démarrer s'ouvre normalement.
-- [ ] Ctrl + Win + molette : SoundDock ne réagit pas.
+- [ ] Ctrl + Win + molette : Pinwheel ne réagit pas.
 - [ ] Volume à 33 % (réglé dans Windows) puis un cran vers le haut : 40 %.
 - [ ] Sourdine active puis un cran vers le haut : la sourdine est retirée.
 - [ ] Touchpad (scroll à deux doigts) et molette libre, si disponibles.

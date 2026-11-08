@@ -1,5 +1,5 @@
 [package]
-name = "sounddock"
+name = "pinwheel"
 description = "Volume with Win + wheel and one shortcut per audio output"
 edition.workspace = true
 version.workspace = true
@@ -9,7 +9,7 @@ publish.workspace = true
 ab_glyph = "0.2.32"
 eframe = "0.37.0"
 log = "0.4.35"
-sounddock-core = { path = "../core" }
+pinwheel-core = { path = "../core" }
 tiny-skia = "0.12.0"
 windows-core = "0.62.2"
 

@@ -1,7 +1,7 @@
 //! Notification area icon and its menu.
 //!
 //! Explorer forgets every icon when it restarts, or may not be ready yet
-//! when SoundDock starts at sign-in. The icon is added again on the
+//! when Pinwheel starts at sign-in. The icon is added again on the
 //! `TaskbarCreated` broadcast, and retried on a timer until the first add
 //! succeeds.
 
@@ -19,7 +19,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 use windows::core::{PCWSTR, w};
 
 const ICON_ID: u32 = 1;
-/// Resource ID of the icon in `res/sounddock.rc`.
+/// Resource ID of the icon in `res/pinwheel.rc`.
 const ICON_RESOURCE: u16 = 1;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -67,7 +67,7 @@ impl Tray {
         data.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
         data.uCallbackMessage = WM_TRAY;
         data.hIcon = self.icon;
-        let tip: Vec<u16> = "SoundDock".encode_utf16().collect();
+        let tip: Vec<u16> = "Pinwheel".encode_utf16().collect();
         data.szTip[..tip.len()].copy_from_slice(&tip);
         self.shown = unsafe { Shell_NotifyIconW(NIM_ADD, &data) }.as_bool();
         self.shown
@@ -104,7 +104,7 @@ pub fn show_menu(hwnd: HWND) -> Option<MenuCommand> {
         let menu = CreatePopupMenu().ok()?;
         let _ = AppendMenuW(menu, MF_STRING, MenuCommand::Settings as usize, w!("Paramètres"));
         let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
-        let _ = AppendMenuW(menu, MF_STRING, MenuCommand::Quit as usize, w!("Quitter SoundDock"));
+        let _ = AppendMenuW(menu, MF_STRING, MenuCommand::Quit as usize, w!("Quitter Pinwheel"));
         let _ = SetMenuDefaultItem(menu, MenuCommand::Settings as u32, 0);
 
         let mut cursor = POINT::default();

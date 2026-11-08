@@ -12,7 +12,7 @@
 
 use crate::hook::VK_MASK;
 use crate::thread::{MessageThread, run_message_loop};
-use sounddock_core::hotkey::{HeldModifiers, Hotkey, has_fixed_name, is_cancel, is_usable_key, key_name};
+use pinwheel_core::hotkey::{HeldModifiers, Hotkey, has_fixed_name, is_cancel, is_usable_key, key_name};
 use std::cell::RefCell;
 use std::sync::mpsc;
 use windows::Win32::Foundation::{LPARAM, LRESULT, WPARAM};

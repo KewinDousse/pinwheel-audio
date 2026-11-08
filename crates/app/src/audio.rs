@@ -5,9 +5,9 @@
 //! the current default device again, so a device that disappeared, a resume
 //! from sleep or a restart of the audio service cannot leave a stale object.
 
+use pinwheel_core::devices::DeviceInfo;
+use pinwheel_core::volume::{VolumeState, stepped_level};
 use policy::{CLSID_POLICY_CONFIG_CLIENT, IPolicyConfig};
-use sounddock_core::devices::DeviceInfo;
-use sounddock_core::volume::{VolumeState, stepped_level};
 use windows::Win32::Devices::FunctionDiscovery::PKEY_Device_FriendlyName;
 use windows::Win32::Media::Audio::Endpoints::IAudioEndpointVolume;
 use windows::Win32::Media::Audio::{

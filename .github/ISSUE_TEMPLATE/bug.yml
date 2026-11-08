@@ -32,5 +32,5 @@ body:
     id: log
     attributes:
       label: Log
-      description: The end of %LOCALAPPDATA%\SoundDock\logs\sounddock.log, if relevant.
+      description: The end of %LOCALAPPDATA%\Pinwheel\logs\pinwheel.log, if relevant.
       render: text

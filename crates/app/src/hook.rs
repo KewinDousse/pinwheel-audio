@@ -12,7 +12,7 @@
 
 use crate::ipc::WM_VOLUME_NOTCHES;
 use crate::thread::{MessageThread, run_message_loop};
-use sounddock_core::volume::WheelAccumulator;
+use pinwheel_core::volume::WheelAccumulator;
 use std::cell::{Cell, RefCell};
 use std::sync::atomic::{AtomicIsize, Ordering};
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};

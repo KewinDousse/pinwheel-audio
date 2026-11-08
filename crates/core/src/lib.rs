@@ -1,4 +1,4 @@
-//! Platform-independent logic of SoundDock.
+//! Platform-independent logic of Pinwheel.
 //!
 //! Everything here builds and is tested on any OS; the Windows app wires it
 //! to the system APIs.

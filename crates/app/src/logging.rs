@@ -1,4 +1,4 @@
-//! Plain-text log in `%LOCALAPPDATA%\SoundDock\logs\sounddock.log`.
+//! Plain-text log in `%LOCALAPPDATA%\Pinwheel\logs\pinwheel.log`.
 //!
 //! Both processes append to the same file, each line tagged with its process.
 //! The background process rotates it at startup.
@@ -52,12 +52,12 @@ impl log::Log for FileLogger {
 /// best effort: without a writable log folder, the app runs without it.
 pub fn init(process: &'static str) {
     let dir = paths::log_dir();
-    let path = dir.join("sounddock.log");
+    let path = dir.join("pinwheel.log");
     if std::fs::create_dir_all(&dir).is_err() {
         return;
     }
     if process == "main" && std::fs::metadata(&path).is_ok_and(|m| m.len() > MAX_SIZE) {
-        let _ = std::fs::rename(&path, dir.join("sounddock.1.log"));
+        let _ = std::fs::rename(&path, dir.join("pinwheel.1.log"));
     }
     let Ok(file) = OpenOptions::new().create(true).append(true).open(&path) else {
         return;
@@ -75,5 +75,5 @@ pub fn init(process: &'static str) {
         log::error!("panic: {info}");
         default_hook(info);
     }));
-    log::info!("SoundDock {} started", env!("CARGO_PKG_VERSION"));
+    log::info!("Pinwheel {} started", env!("CARGO_PKG_VERSION"));
 }

@@ -15,7 +15,7 @@ use windows::core::{PCWSTR, w};
 
 const RUN_KEY: PCWSTR = w!(r"Software\Microsoft\Windows\CurrentVersion\Run");
 const APPROVED_KEY: PCWSTR = w!(r"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run");
-const VALUE_NAME: PCWSTR = w!("SoundDock");
+const VALUE_NAME: PCWSTR = w!("Pinwheel");
 
 /// First byte of the `StartupApproved` flag: even means enabled, odd means
 /// disabled by the user in Windows.

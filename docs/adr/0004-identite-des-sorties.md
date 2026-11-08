@@ -10,7 +10,7 @@ Chaque sortie choisie est enregistrée avec son identifiant d'endpoint Windows e
 
 Une sortie absente reste dans les paramètres avec son raccourci jusqu'à ce que l'utilisateur la retire.
 
-Le fichier de paramètres (`%APPDATA%\SoundDock\settings.json`, JSON avec un numéro de version) :
+Le fichier de paramètres (`%APPDATA%\Pinwheel\settings.json`, JSON avec un numéro de version) :
 
 - n'est écrit qu'après une action de l'utilisateur : un changement dans la fenêtre de paramètres, ou l'appui sur un raccourci qui déclenche le cas 2 ;
 - est écrit de façon atomique (fichier temporaire puis renommage) ;

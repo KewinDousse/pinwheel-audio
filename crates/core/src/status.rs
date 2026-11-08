@@ -31,7 +31,7 @@ mod tests {
 
     #[test]
     fn round_trips_and_tolerates_garbage() {
-        let dir = std::env::temp_dir().join(format!("sounddock-status-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("pinwheel-status-{}", std::process::id()));
         let path = dir.join("status.json");
         let mut status = Status::default();
         status.hotkey_errors.insert("a".into(), "refusé".into());

@@ -4,9 +4,9 @@
 //! to the status file for the settings window, and registration is retried
 //! on a timer, since the app holding it may quit.
 
-use sounddock_core::hotkey::Hotkey;
-use sounddock_core::settings::{OutputBinding, duplicate_hotkey};
-use sounddock_core::status::Status;
+use pinwheel_core::hotkey::Hotkey;
+use pinwheel_core::settings::{OutputBinding, duplicate_hotkey};
+use pinwheel_core::status::Status;
 use windows::Win32::Foundation::HWND;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     HOT_KEY_MODIFIERS, MOD_ALT, MOD_CONTROL, MOD_NOREPEAT, MOD_SHIFT, MOD_WIN, RegisterHotKey, UnregisterHotKey,

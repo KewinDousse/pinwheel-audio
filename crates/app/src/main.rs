@@ -1,4 +1,4 @@
-//! SoundDock: volume with Win + mouse wheel, and one shortcut per audio output.
+//! Pinwheel: volume with Win + mouse wheel, and one shortcut per audio output.
 //!
 //! The same executable runs in two modes:
 //! - without arguments, the background process (tray icon, hook, shortcuts,
@@ -50,6 +50,6 @@ fn main() {
 
 #[cfg(not(windows))]
 fn main() {
-    eprintln!("SoundDock ne fonctionne que sous Windows.");
+    eprintln!("Pinwheel ne fonctionne que sous Windows.");
     std::process::exit(1);
 }

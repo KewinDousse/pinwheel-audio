@@ -13,12 +13,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - run: cargo build -p sounddock --release
+      - run: cargo build -p pinwheel --release
       - name: Create a draft release with the executable
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           cd target/release
-          sha256sum sounddock.exe > sounddock.exe.sha256
-          gh release create "$GITHUB_REF_NAME" sounddock.exe sounddock.exe.sha256 --draft --generate-notes --repo "$GITHUB_REPOSITORY"
+          sha256sum pinwheel.exe > pinwheel.exe.sha256
+          gh release create "$GITHUB_REF_NAME" pinwheel.exe pinwheel.exe.sha256 --draft --generate-notes --repo "$GITHUB_REPOSITORY"

@@ -5,8 +5,8 @@
 //! restarts the hold. The timers belong to the main window, which forwards
 //! `WM_TIMER` to [`Osd::on_timer`], so all state lives on the main thread.
 
-use sounddock_core::osd::{Content, Fonts, render};
-use sounddock_core::settings::{OsdPosition, OsdSettings};
+use pinwheel_core::osd::{Content, Fonts, render};
+use pinwheel_core::settings::{OsdPosition, OsdSettings};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 use tiny_skia::Pixmap;
@@ -48,7 +48,7 @@ pub struct Osd {
 impl Osd {
     /// `timer_owner` is the main window, which receives the fade timers.
     pub fn new(timer_owner: HWND) -> windows::core::Result<Self> {
-        let class = w!("SoundDock.Osd");
+        let class = w!("Pinwheel.Osd");
         let instance = unsafe { GetModuleHandleW(None) }?.into();
         let wc = WNDCLASSEXW {
             cbSize: size_of::<WNDCLASSEXW>() as u32,
@@ -62,7 +62,7 @@ impl Osd {
             CreateWindowExW(
                 WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
                 class,
-                w!("SoundDock"),
+                w!("Pinwheel"),
                 WS_POPUP,
                 0,
                 0,

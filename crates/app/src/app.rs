@@ -15,10 +15,10 @@ use crate::ipc::{self, InstanceLock, WM_OPEN_SETTINGS, WM_PREVIEW_OSD, WM_RELOAD
 use crate::osd::Osd;
 use crate::tray::{self, MenuCommand, Tray};
 use crate::{paths, startup};
-use sounddock_core::devices::{Resolution, resolve};
-use sounddock_core::osd::Content;
-use sounddock_core::settings::{self, LoadIssue, Settings};
-use sounddock_core::status;
+use pinwheel_core::devices::{Resolution, resolve};
+use pinwheel_core::osd::Content;
+use pinwheel_core::settings::{self, LoadIssue, Settings};
+use pinwheel_core::status;
 use std::cell::RefCell;
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::System::Com::{COINIT_APARTMENTTHREADED, CoInitializeEx};
@@ -119,7 +119,7 @@ pub fn run() {
     }
     // Drops the tray icon and stops the hook thread.
     APP.set(None);
-    log::info!("SoundDock stopped");
+    log::info!("Pinwheel stopped");
 }
 
 fn create_main_window() -> windows::core::Result<HWND> {
@@ -137,7 +137,7 @@ fn create_main_window() -> windows::core::Result<HWND> {
         CreateWindowExW(
             WINDOW_EX_STYLE(0),
             ipc::MAIN_CLASS,
-            w!("SoundDock"),
+            w!("Pinwheel"),
             WS_OVERLAPPED,
             0,
             0,

@@ -1,6 +1,6 @@
 [package]
-name = "sounddock-core"
-description = "Platform-independent logic of SoundDock"
+name = "pinwheel-core"
+description = "Platform-independent logic of Pinwheel"
 edition.workspace = true
 version.workspace = true
 publish.workspace = true

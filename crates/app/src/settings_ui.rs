@@ -11,11 +11,11 @@ use crate::keys::{self, Capture, Captured};
 use crate::paths;
 use crate::startup::{self, StartupState};
 use eframe::egui;
-use sounddock_core::devices::{DeviceInfo, Resolution, resolve};
-use sounddock_core::hotkey::Hotkey;
-use sounddock_core::settings::{self, OsdPosition, OsdStyle, OutputBinding, Settings, duplicate_hotkey};
-use sounddock_core::status::{self, Status};
-use sounddock_core::volume::STEP_RANGE;
+use pinwheel_core::devices::{DeviceInfo, Resolution, resolve};
+use pinwheel_core::hotkey::Hotkey;
+use pinwheel_core::settings::{self, OsdPosition, OsdStyle, OutputBinding, Settings, duplicate_hotkey};
+use pinwheel_core::status::{self, Status};
+use pinwheel_core::volume::STEP_RANGE;
 use std::path::PathBuf;
 use std::time::{Duration, Instant, SystemTime};
 use windows::Win32::System::Com::{COINIT_APARTMENTTHREADED, CoInitializeEx};
@@ -67,7 +67,7 @@ fn focus_existing_window() {
 
 /// The 256 px image of the embedded icon, for the title bar and taskbar.
 fn window_icon() -> Option<egui::IconData> {
-    let ico: &[u8] = include_bytes!("../res/sounddock.ico");
+    let ico: &[u8] = include_bytes!("../res/pinwheel.ico");
     let count = usize::from(u16::from_le_bytes([ico[4], ico[5]]));
     (0..count).find_map(|i| {
         let entry = ico.get(6 + 16 * i..22 + 16 * i)?;
@@ -224,9 +224,9 @@ impl SettingsApp {
             ui.horizontal_wrapped(|ui| {
                 ui.colored_label(
                     ui.visuals().warn_fg_color,
-                    "SoundDock ne tourne pas : la molette et les raccourcis sont inactifs.",
+                    "Pinwheel ne tourne pas : la molette et les raccourcis sont inactifs.",
                 );
-                if ui.button("Lancer SoundDock").clicked()
+                if ui.button("Lancer Pinwheel").clicked()
                     && let Ok(exe) = std::env::current_exe()
                 {
                     let _ = std::process::Command::new(exe).spawn();
@@ -349,7 +349,7 @@ impl SettingsApp {
         ui.heading("Démarrage");
         let mut enabled = self.startup == StartupState::On;
         if ui
-            .checkbox(&mut enabled, "Lancer SoundDock à l'ouverture de session")
+            .checkbox(&mut enabled, "Lancer Pinwheel à l'ouverture de session")
             .changed()
         {
             if let Err(e) = startup::set(enabled) {

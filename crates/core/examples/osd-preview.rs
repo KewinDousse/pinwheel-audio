@@ -1,11 +1,11 @@
 //! Renders every display style into one PNG, to check the drawing without
 //! Windows.
 //!
-//! `cargo run -p sounddock-core --example osd-preview -- <out.png> <regular.ttf> [bold.ttf]`
+//! `cargo run -p pinwheel-core --example osd-preview -- <out.png> <regular.ttf> [bold.ttf]`
 
-use sounddock_core::osd::{Content, Fonts, render};
-use sounddock_core::settings::OsdStyle;
-use sounddock_core::volume::VolumeState;
+use pinwheel_core::osd::{Content, Fonts, render};
+use pinwheel_core::settings::OsdStyle;
+use pinwheel_core::volume::VolumeState;
 use std::path::PathBuf;
 use tiny_skia::{Color, Pixmap, PixmapPaint, Transform};
 

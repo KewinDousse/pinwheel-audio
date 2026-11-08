@@ -2471,6 +2471,30 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd"
 
 [[package]]
+name = "pinwheel"
+version = "0.1.0"
+dependencies = [
+ "ab_glyph",
+ "eframe",
+ "embed-resource",
+ "log",
+ "pinwheel-core",
+ "tiny-skia 0.12.0",
+ "windows",
+ "windows-core",
+]
+
+[[package]]
+name = "pinwheel-core"
+version = "0.1.0"
+dependencies = [
+ "ab_glyph",
+ "serde",
+ "serde_json",
+ "tiny-skia 0.12.0",
+]
+
+[[package]]
 name = "piper"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3031,30 +3055,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dd538fb6910ac1099850255cf94a94df6551fbdd602454387d0adb2d1ca6dead"
 dependencies = [
  "serde",
-]
-
-[[package]]
-name = "sounddock"
-version = "0.1.0"
-dependencies = [
- "ab_glyph",
- "eframe",
- "embed-resource",
- "log",
- "sounddock-core",
- "tiny-skia 0.12.0",
- "windows",
- "windows-core",
-]
-
-[[package]]
-name = "sounddock-core"
-version = "0.1.0"
-dependencies = [
- "ab_glyph",
- "serde",
- "serde_json",
- "tiny-skia 0.12.0",
 ]
 
 [[package]]
