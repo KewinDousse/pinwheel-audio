@@ -21,7 +21,7 @@ pub const WM_OPEN_SETTINGS: u32 = WM_APP + 1;
 pub const WM_RELOAD: u32 = WM_APP + 2;
 /// Show the on-screen display with the current style, as a preview.
 pub const WM_PREVIEW_OSD: u32 = WM_APP + 3;
-/// Wheel notches from the hook thread; `wParam` holds the signed count.
+/// Wheel notches are waiting in `hook::take_notches`.
 pub const WM_VOLUME_NOTCHES: u32 = WM_APP + 4;
 /// Tray icon callback.
 pub const WM_TRAY: u32 = WM_APP + 5;

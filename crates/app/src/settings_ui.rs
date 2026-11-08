@@ -174,6 +174,7 @@ impl SettingsApp {
         let Some(active) = &self.capture else { return };
         let index = active.index;
         let Some(result) = active.capture.poll() else { return };
+        log::info!("PROBE ui got {result:?}");
         self.capture = None;
         match result {
             Captured::Hotkey(hotkey) => {

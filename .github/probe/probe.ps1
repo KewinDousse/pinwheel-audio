@@ -79,6 +79,10 @@ Start-Sleep 1
 [U]::Key(0x1B, $false); Start-Sleep -Milliseconds 50; [U]::Key(0x1B, $true)
 Start-Sleep 1
 Shot 'after-escape'
+$again = FindByName $window 'Set…'
+if ($again) { ClickElement $again }
+Start-Sleep 17
+Shot 'after-timeout'
 
 # Win held long enough to repeat, as a physical key does, with wheel notches in the middle.
 [U]::Click(900, 600)

@@ -9,7 +9,7 @@
 //! messages re-entrantly (the tray menu runs its own modal loop).
 
 use crate::audio::Audio;
-use crate::hook::HookThread;
+use crate::hook::{self, HookThread};
 use crate::hotkeys::Hotkeys;
 use crate::ipc::{self, InstanceLock, WM_OPEN_SETTINGS, WM_PREVIEW_OSD, WM_RELOAD, WM_TRAY, WM_VOLUME_NOTCHES};
 use crate::osd::Osd;
@@ -358,7 +358,13 @@ fn current_lang() -> Lang {
 
 unsafe extern "system" fn window_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     match msg {
-        WM_VOLUME_NOTCHES => with_app(|app| app.on_volume_notches(wparam.0 as isize as i32)),
+        WM_VOLUME_NOTCHES => {
+            // Read even when the app is busy, or the hook would wait for this message forever.
+            let notches = hook::take_notches();
+            if notches != 0 {
+                with_app(|app| app.on_volume_notches(notches));
+            }
+        }
         WM_HOTKEY => {
             if let Some(index) = Hotkeys::output_index(wparam.0) {
                 with_app(|app| app.on_hotkey(index));

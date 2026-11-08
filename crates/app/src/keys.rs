@@ -106,7 +106,10 @@ fn run(sender: mpsc::Sender<Captured>, on_result: Box<dyn Fn()>) {
         finished: false,
     }));
     let mut hook: Option<HHOOK> = match unsafe { SetWindowsHookExW(WH_KEYBOARD_LL, Some(keyboard_proc), None, 0) } {
-        Ok(hook) => Some(hook),
+        Ok(hook) => {
+            log::info!("PROBE capture hook installed");
+            Some(hook)
+        }
         Err(e) => {
             log::error!("installing the capture hook failed: {e}");
             finish(Captured::Failed);
@@ -137,6 +140,7 @@ fn finish(result: Captured) {
             return;
         };
         state.finished = true;
+        log::info!("PROBE capture finished: {result:?}");
         let _ = state.sender.send(result);
         (state.on_result)();
         let _ = unsafe { PostThreadMessageW(GetCurrentThreadId(), WM_FINISHED, WPARAM(0), LPARAM(0)) };
@@ -162,6 +166,7 @@ enum Verdict {
 
 fn on_key(vk: u16, down: bool) -> Verdict {
     let finished = STATE.with_borrow(|state| state.as_ref().is_none_or(|s| s.finished));
+    log::info!("PROBE key {vk:#x} down={down} finished={finished} focus={}", settings_window_has_focus());
     // The wheel hook's Start menu mask is not a key the user pressed.
     if finished || vk == VK_MASK.0 {
         return Verdict::PassThrough;
