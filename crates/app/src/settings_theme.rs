@@ -284,7 +284,7 @@ pub fn fold_header<R>(
         ui.painter().rect_filled(rect, radius, palette.card_hover);
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }
-    let inner = rect.shrink2(egui::vec2(16.0, 0.0));
+    let inner = rect.shrink2(egui::vec2(16.0, 10.0));
     let mut content = ui.new_child(
         egui::UiBuilder::new()
             .max_rect(inner)

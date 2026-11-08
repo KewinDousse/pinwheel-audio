@@ -23,7 +23,14 @@ public static class U {
     uint pid; GetWindowThreadProcessId(GetForegroundWindow(), out pid);
     try { return System.Diagnostics.Process.GetProcessById((int)pid).ProcessName; } catch { return "?"; }
   }
-  public static void Click(int x, int y) { SetCursorPos(x, y); mouse_event(2,0,0,0,UIntPtr.Zero); mouse_event(4,0,0,0,UIntPtr.Zero); }
+  // Paced like a hand on a mouse: egui hit-tests against the pass before,
+  // so the pointer has to rest on the widget for a pass before pressing.
+  public static void Click(int x, int y) {
+    SetCursorPos(x, y); System.Threading.Thread.Sleep(150);
+    mouse_event(2,0,0,0,UIntPtr.Zero); System.Threading.Thread.Sleep(60);
+    mouse_event(4,0,0,0,UIntPtr.Zero); System.Threading.Thread.Sleep(60);
+    mouse_event(1,1,0,0,UIntPtr.Zero);
+  }
   public static void Key(byte vk, bool up) { keybd_event(vk, 0, up ? 2u : 0u, UIntPtr.Zero); }
   public static void Wheel(int delta) { mouse_event(0x800, 0, 0, delta, UIntPtr.Zero); }
 }
