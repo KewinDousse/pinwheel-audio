@@ -1,18 +1,18 @@
-# ADR 0001 : Rust, windows-rs et egui
+# ADR 0001: Rust, windows-rs and egui
 
-## Décision
+## Decision
 
-L'application est écrite en Rust, avec `windows-rs` pour les API Windows, `egui`/`eframe` pour la fenêtre de paramètres, `tiny-skia` et `ab_glyph` pour dessiner l'affichage. Elle est livrée en un seul exécutable natif, sans runtime à installer, compilable depuis Linux (`cargo-xwin`) comme depuis Windows.
+The app is written in Rust, with `windows-rs` for the Windows APIs, `egui`/`eframe` for the settings window, and `tiny-skia` and `ab_glyph` to draw the on-screen display. It ships as a single native executable, with no runtime to install, and builds from Linux (`cargo-xwin`) as well as from Windows.
 
-## Raisons
+## Reasons
 
-- Le logiciel tourne en permanence et doit démarrer de façon fiable à l'ouverture de session. Un exécutable natif démarre instantanément, ne dépend d'aucun runtime (CRT lié en statique, voir `.cargo/config.toml`) et n'extrait rien dans `%TEMP%`.
-- Les parties délicates (hook souris, `RegisterHotKey`, Core Audio, `IPolicyConfig`) sont des appels Win32 et COM directs, aussi simples en Rust qu'ailleurs.
-- La logique et le rendu de l'affichage, séparés dans `crates/core`, se testent sur n'importe quel OS.
+- The app runs all the time and must start reliably at sign-in. A native executable starts instantly, depends on no runtime (statically linked CRT, see `.cargo/config.toml`) and extracts nothing into `%TEMP%`.
+- The delicate parts (mouse hook, `RegisterHotKey`, Core Audio, `IPolicyConfig`) are direct Win32 and COM calls, as simple in Rust as elsewhere.
+- The logic and the drawing of the display, kept in `crates/core`, are tested on any OS.
 
-## Conséquences
+## Consequences
 
-- La fenêtre de paramètres n'a pas l'aspect natif de Windows (egui).
-- L'exécutable pèse environ 14 Mo, surtout à cause du moteur de rendu d'egui (wgpu). Le processus d'arrière-plan ne l'utilise pas.
-- L'affichage est dessiné à la main plutôt que décrit dans un langage d'interface.
-- La fenêtre de paramètres tourne dans un processus séparé, car egui (via winit) veut posséder la boucle de messages du thread principal, déjà prise par le processus d'arrière-plan.
+- The settings window does not look native (egui).
+- The executable weighs about 14 MB, mostly because of egui's renderer (wgpu). The background process does not use it.
+- The display is drawn by hand rather than described in a UI language.
+- The settings window runs in a separate process, because egui (through winit) wants to own the main thread's message loop, which the background process already uses.

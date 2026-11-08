@@ -8,9 +8,10 @@ PRODUCTVERSION 0,1,0,0
 BEGIN
   BLOCK "StringFileInfo"
   BEGIN
-    BLOCK "040C04B0"
+    BLOCK "040904B0"
     BEGIN
       VALUE "FileDescription", "Pinwheel"
+      VALUE "LegalCopyright", "Copyright (c) 2026 Kewin Dousse, MIT License"
       VALUE "ProductName", "Pinwheel"
       VALUE "FileVersion", "0.1.0"
       VALUE "ProductVersion", "0.1.0"
@@ -19,6 +20,6 @@ BEGIN
   END
   BLOCK "VarFileInfo"
   BEGIN
-    VALUE "Translation", 0x040C, 1200
+    VALUE "Translation", 0x0409, 1200
   END
 END

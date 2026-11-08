@@ -1,26 +1,26 @@
-# ADR 0004 : identité des sorties et conservation des paramètres
+# ADR 0004: output identity and keeping the settings
 
-## Décision
+## Decision
 
-Chaque sortie choisie est enregistrée avec son identifiant d'endpoint Windows et son nom (`PKEY_Device_FriendlyName`, par exemple « Casque (Realtek USB Audio) »). À l'appui sur son raccourci, la sortie est cherchée parmi les sorties actives, débranchées ou désactivées :
+Each chosen output is saved with its Windows endpoint ID and its name (`PKEY_Device_FriendlyName`, such as "Headphones (Realtek USB Audio)"). When its shortcut is pressed, the output is looked up among the active, unplugged or disabled outputs:
 
-1. Même identifiant et active : c'est elle.
-2. Sinon, si **une seule** sortie active porte le même nom : c'est elle. Son nouvel identifiant et son nom remplacent les anciens dans les paramètres, et le changement est écrit dans le journal.
-3. Sinon (débranchée, introuvable, ou plusieurs sorties du même nom) : rien ne change, l'affichage indique « déconnectée ».
+1. Same ID and active: that is the one.
+2. Otherwise, if **exactly one** active output has the same name: that is the one. Its new ID and name replace the old ones in the settings, and the change is logged.
+3. Otherwise (unplugged, not found, or several outputs with the same name): nothing changes, and the display says "disconnected".
 
-Une sortie absente reste dans les paramètres avec son raccourci jusqu'à ce que l'utilisateur la retire.
+A missing output stays in the settings with its shortcut until the user removes it.
 
-Le fichier de paramètres (`%APPDATA%\Pinwheel\settings.json`, JSON avec un numéro de version) :
+The settings file (`%APPDATA%\Pinwheel\settings.json`, JSON with a version number):
 
-- n'est écrit qu'après une action de l'utilisateur : un changement dans la fenêtre de paramètres, ou l'appui sur un raccourci qui déclenche le cas 2 ;
-- est écrit de façon atomique (fichier temporaire puis renommage) ;
-- s'il est illisible, il est renommé en `settings.json.<horodatage>.bak` avant que les valeurs par défaut soient utilisées ;
-- tolère les champs absents (valeurs par défaut) et ignore les champs inconnus.
+- is only written after a user action: a change in the settings window, or a shortcut press that triggers case 2;
+- is written atomically (temporary file, then rename);
+- when unreadable, is renamed to `settings.json.<timestamp>.bak` before the defaults are used;
+- tolerates missing fields (defaults) and ignores unknown ones.
 
-Un raccourci que Windows refuse reste enregistré : le refus est affiché dans les paramètres et l'enregistrement est retenté toutes les 30 s.
+A shortcut Windows refuses stays saved: the refusal is shown in the settings and registration is retried every 30 s.
 
-## Raisons
+## Reasons
 
-- L'identifiant d'endpoint survit aux redémarrages et aux débranchements, mais Microsoft précise qu'il change si le pilote est mis à jour ou le périphérique réinstallé ([documentation](https://learn.microsoft.com/en-us/windows/win32/coreaudio/endpoint-id-strings)). Un nouvel appairage Bluetooth en donne aussi un nouveau. Le nom permet de retrouver la sortie dans ces cas.
-- Deux sorties du même nom ne permettent pas de choisir sans risque d'erreur.
-- Ne jamais réécrire au démarrage empêche qu'une sortie absente à ce moment disparaisse des paramètres.
+- The endpoint ID survives restarts and unplugging, but Microsoft states that it changes when the driver is updated or the device reinstalled ([documentation](https://learn.microsoft.com/en-us/windows/win32/coreaudio/endpoint-id-strings)). Pairing a Bluetooth device again also gives a new one. The name finds the output again in those cases.
+- With two outputs of the same name, there is no safe way to choose.
+- Never rewriting at startup keeps an output that is missing at that moment from vanishing from the settings.

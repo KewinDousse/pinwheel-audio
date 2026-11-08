@@ -1,67 +1,71 @@
 # Architecture
 
-## Deux processus, un exécutable
+## Two processes, one executable
 
-| Mode | Lancement | Rôle |
+| Mode | Started as | Role |
 |:--|:--|:--|
-| Arrière-plan | `pinwheel.exe` | Icône, hook de la molette, raccourcis, affichage. Une seule instance (mutex `Local\Pinwheel.Main`). |
-| Paramètres | `pinwheel.exe --settings` | Fenêtre egui. Une seule instance (mutex `Local\Pinwheel.Settings`). |
+| Background | `pinwheel.exe` | Tray icon, wheel hook, shortcuts, display. Single instance (mutex `Local\Pinwheel.Main`). |
+| Settings | `pinwheel.exe --settings` | egui window. Single instance (mutex `Local\Pinwheel.Settings`). |
 
-La fenêtre de paramètres est un processus à part : la bibliothèque d'interface (egui, wgpu) n'est chargée que quand elle est ouverte, et le processus d'arrière-plan reste léger.
+The settings window is a process of its own: the UI toolkit (egui, wgpu) is only loaded while it is open, and the background process stays light.
 
-Communication :
+Communication:
 
-- Paramètres → arrière-plan : messages postés à la fenêtre cachée de classe `Pinwheel.Main` (`crates/app/src/ipc.rs`). `WM_RELOAD` après chaque enregistrement, `WM_PREVIEW_OSD` pour l'aperçu.
-- Arrière-plan → paramètres : `status.json` (raccourcis refusés), et `settings.json` quand une sortie a changé d'identifiant. La fenêtre relit les deux chaque seconde.
+- Settings → background: messages posted to the hidden window of class `Pinwheel.Main` (`crates/app/src/ipc.rs`). `WM_RELOAD` after each save, `WM_PREVIEW_OSD` for the preview.
+- Background → settings: `status.json` (refused shortcuts), and `settings.json` when an output got a new ID. The window reads both again every second.
 
-## Processus d'arrière-plan
+## Background process
 
-Tout l'état est dans `App` (`crates/app/src/app.rs`), sur le thread principal, qui possède une fenêtre de premier niveau cachée. Cette fenêtre reçoit :
+All the state is in `App` (`crates/app/src/app.rs`), on the main thread, which owns a hidden top-level window. That window receives:
 
-| Message | Origine | Effet |
+| Message | From | Effect |
 |:--|:--|:--|
-| `WM_VOLUME_NOTCHES` | thread du hook | Change le volume, montre l'affichage |
-| `WM_HOTKEY` | `RegisterHotKey` | Change la sortie par défaut |
-| `WM_TRAY`, `TaskbarCreated` | Explorer | Menu, paramètres, icône recréée |
-| `WM_POWERBROADCAST` (reprise), `WM_WTSSESSION_CHANGE` (déverrouillage) | Windows | Hook réinstallé |
-| `WM_TIMER` | minuteurs | Fondu de l'affichage, nouvel essai des raccourcis refusés et de l'icône |
+| `WM_VOLUME_NOTCHES` | hook thread | Changes the volume, shows the display |
+| `WM_HOTKEY` | `RegisterHotKey` | Changes the default output |
+| `WM_TRAY`, `TaskbarCreated` | Explorer | Menu, settings, icon added again |
+| `WM_POWERBROADCAST` (resume), `WM_WTSSESSION_CHANGE` (unlock) | Windows | Hook reinstalled |
+| `WM_TIMER` | timers | Display fade, retry of refused shortcuts and of the icon |
 
-Le hook souris tourne sur son propre thread (`hook.rs`), voir [ADR 0003](adr/0003-win-wheel-hook.md).
+The mouse hook runs on its own thread (`hook.rs`), see [ADR 0003](adr/0003-win-wheel-hook.md).
 
-Les hooks bas niveau ont besoin d'une boucle de messages sur leur thread. `thread.rs` fournit ce thread (`MessageThread`) : il vit jusqu'à ce que son propriétaire le libère, et ne se termine qu'après `WM_QUIT`, pour qu'aucun message posté plus tard n'arrive à un autre thread qui aurait repris son identifiant.
+Low-level hooks need a message loop on their thread. `thread.rs` provides that thread (`MessageThread`): it lives until its owner drops it, and only ends after `WM_QUIT`, so that no message posted later reaches another thread that reused its ID.
 
-### Chemin d'un cran de molette
+### Path of a wheel notch
 
-1. Le hook voit `WM_MOUSEWHEEL` avec Win seul enfoncé.
-2. Il cumule le delta (`WheelAccumulator`) et envoie la touche `vkE8` pour que Démarrer ne s'ouvre pas.
-3. Il bloque l'événement et poste le nombre de crans entiers à la fenêtre principale.
-4. `App` demande la sortie multimédia par défaut, calcule le nouveau niveau (`stepped_level`), l'applique, retire la sourdine si le volume monte.
-5. L'affichage dessine le niveau (`core::osd::render`) et le montre sur l'écran du curseur.
+1. The hook sees `WM_MOUSEWHEEL` with Win alone held.
+2. It adds up the delta (`WheelAccumulator`) and sends the `vkE8` key so that Start does not open.
+3. It swallows the event and posts the number of whole notches to the main window.
+4. `App` asks for the default multimedia output, computes the new level (`stepped_level`), applies it, and unmutes when the volume goes up.
+5. The display draws the level (`core::osd::render`) and shows it on the cursor's monitor.
 
-### Chemin d'un raccourci
+### Path of a shortcut
 
-1. `WM_HOTKEY` donne l'index de la sortie dans les paramètres.
-2. `resolve` retrouve la sortie parmi celles de Windows, voir [ADR 0004](adr/0004-identite-des-sorties.md).
-3. `IPolicyConfig::SetDefaultEndpoint` la rend sortie par défaut, voir [ADR 0002](adr/0002-ipolicyconfig.md).
-4. La sortie par défaut est relue pour vérifier le changement, puis affichée.
+1. `WM_HOTKEY` gives the index of the output in the settings.
+2. `resolve` finds the output among those of Windows, see [ADR 0004](adr/0004-output-identity.md).
+3. `IPolicyConfig::SetDefaultEndpoint` makes it the default output, see [ADR 0002](adr/0002-ipolicyconfig.md).
+4. The default output is read back to check the switch, then shown.
 
-## Capture d'un raccourci
+## Shortcut capture
 
-Dans la fenêtre de paramètres, « Choisir… » lance `keys::Capture`, qui pose un hook clavier bas niveau sur un `MessageThread`. Tant que la capture dure, le hook avale toutes les touches : ni le shell ni le processus d'arrière-plan ne les voient, donc Win+E n'ouvre pas l'Explorateur et les raccourcis existants ne se déclenchent pas. N'importe quelle touche, combinaison avec Win comprise, peut ainsi être choisie.
+In the settings window, "Set…" starts `keys::Capture`, which installs a low-level keyboard hook on a `MessageThread`. While the capture lasts, the hook swallows every key: neither the shell nor the background process sees them, so Win+E does not open the Explorer and existing shortcuts do not fire. Any key, Win combinations included, can be chosen this way.
 
-- La combinaison est complète au premier appui sur une touche qui n'est pas un modificateur. Ctrl, Alt, Maj et Win sont suivis côté gauche et côté droit (`HeldModifiers`), pour qu'en relâcher un ne fasse pas oublier l'autre.
-- Échap seul annule. La capture s'arrête aussi d'elle-même au bout de 15 s, ou dès qu'une autre application prend le focus : le hook est global, et une touche tapée ailleurs ne doit pas être volée.
-- Les touches injectées sont acceptées, car les logiciels de macros (G Hub, Synapse, AutoHotkey) passent par là. Seule `vkE8`, envoyée par le hook de la molette, est ignorée.
-- `Hotkey::validate` refuse une combinaison sans touche principale, et F12, réservée par Windows. `Hotkey::warnings` signale celles qui restent possibles mais gênantes : Win, ou une combinaison sans Ctrl, Alt ni Win, dont la touche ne marchera plus dans les autres applications (F13 à F24 exceptées).
+- The combination is complete at the first press of a key that is not a modifier. Ctrl, Alt, Shift and Win are tracked on the left and right side (`HeldModifiers`), so that releasing one does not forget the other.
+- Escape alone cancels. The capture also ends by itself after 15 s, or as soon as another app takes the focus: the hook is global, and a key typed elsewhere must not be stolen.
+- Injected keys are accepted, since macro software (G Hub, Synapse, AutoHotkey) sends its keys that way. Only `vkE8`, sent by the wheel hook, is ignored.
+- `Hotkey::validate` refuses a combination with no main key, and F12, which Windows reserves. `Hotkey::warnings` flags those that work but get in the way: Win, or a combination without Ctrl, Alt or Win, whose key stops working in other apps (F13 to F24 excepted).
 
-## Robustesse
+## Interface language
 
-- **Audio** : seul l'énumérateur Core Audio est gardé. Chaque action redemande la sortie par défaut, et une erreur recrée l'énumérateur avant un second essai. Un service audio lent au démarrage ou redémarré ne bloque donc rien.
-- **Icône** : réessayée toutes les 2 s si Explorer n'est pas prêt, recréée sur `TaskbarCreated`.
-- **Raccourcis** : un raccourci refusé reste dans les paramètres et est réessayé toutes les 30 s.
-- **Paramètres** : écriture atomique, fichier illisible gardé de côté, jamais réécrit au démarrage.
-- **Journal** : `%LOCALAPPDATA%\Pinwheel\logs\pinwheel.log`, avec les paniques.
+Texts come from `crates/core/src/i18n.rs`, in the language of the settings or else of Windows (`crates/app/src/language.rs`), see [ADR 0005](adr/0005-interface-language.md). The background process reads it for each display and each tray menu, so a change in the settings applies at once.
 
-## Affichage
+## Robustness
 
-`crates/core/src/osd.rs` dessine dans une image RGBA prémultipliée (tiny-skia pour les formes, ab_glyph pour le texte, polices Segoe UI de Windows). `crates/app/src/osd.rs` la copie dans une fenêtre `WS_EX_LAYERED` posée par `UpdateLayeredWindow`. La fenêtre ne prend jamais le focus (`WS_EX_NOACTIVATE`), laisse passer les clics (`WS_EX_TRANSPARENT`) et n'apparaît pas dans Alt+Tab (`WS_EX_TOOLWINDOW`). Elle ne passe pas au-dessus d'un jeu en plein écran exclusif.
+- **Audio**: only the Core Audio enumerator is kept. Each action asks for the default output again, and an error recreates the enumerator before a second try. An audio service that is slow at sign-in or restarted blocks nothing.
+- **Icon**: retried every 2 s while Explorer is not ready, added again on `TaskbarCreated`.
+- **Shortcuts**: a refused shortcut stays in the settings and is retried every 30 s.
+- **Settings**: atomic write, unreadable file kept aside, never rewritten at startup.
+- **Log**: `%LOCALAPPDATA%\Pinwheel\logs\pinwheel.log`, panics included.
+
+## Display
+
+`crates/core/src/osd.rs` draws into a premultiplied RGBA image (tiny-skia for shapes, ab_glyph for text, with the Windows Segoe UI fonts). `crates/app/src/osd.rs` copies it into a `WS_EX_LAYERED` window set by `UpdateLayeredWindow`. The window never takes the focus (`WS_EX_NOACTIVATE`), lets clicks through (`WS_EX_TRANSPARENT`) and does not appear in Alt+Tab (`WS_EX_TOOLWINDOW`). It does not show above a game in exclusive fullscreen.

@@ -8,6 +8,8 @@ default-members = ["crates/core"]
 edition = "2024"
 version = "0.1.0"
 publish = false
+license = "MIT"
+repository = "https://github.com/KewinDousse/pinwheel-audio"
 
 [profile.release]
 lto = true

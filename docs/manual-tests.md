@@ -1,53 +1,60 @@
-# Tests manuels sous Windows
+# Manual tests on Windows
 
-Ce que les tests automatiques ne couvrent pas. Le journal (`%LOCALAPPDATA%\Pinwheel\logs\pinwheel.log`) aide à comprendre un échec.
+What the automated tests do not cover. The log (`%LOCALAPPDATA%\Pinwheel\logs\pinwheel.log`) helps understand a failure.
 
-## Démarrage
+## Startup
 
-- [ ] Premier lancement : l'icône apparaît, la fenêtre de paramètres s'ouvre.
-- [ ] Relancer l'exécutable : un seul Pinwheel tourne, les paramètres s'ouvrent.
-- [ ] Démarrage automatique coché, puis fermeture et réouverture de session : Pinwheel tourne.
-- [ ] Désactiver Pinwheel dans Paramètres Windows > Applications > Démarrage : la fenêtre de paramètres l'indique.
-- [ ] Redémarrer Explorer (Gestionnaire des tâches) : l'icône revient.
+- [ ] First run: the icon appears, the settings window opens.
+- [ ] Run the executable again: a single Pinwheel runs, the settings open.
+- [ ] Startup ticked, then sign out and in again: Pinwheel runs.
+- [ ] Turn Pinwheel off in Windows Settings > Apps > Startup: the settings window says so.
+- [ ] Restart Explorer (Task Manager): the icon comes back.
 
-## Win + molette
+## Win + wheel
 
-- [ ] Dans l'Explorateur et dans un navigateur : le volume change par pas de 10 %, la page ne défile pas.
-- [ ] Relâcher Win après avoir tourné la molette : le menu Démarrer ne s'ouvre pas.
-- [ ] Win seul, sans molette : le menu Démarrer s'ouvre normalement.
-- [ ] Ctrl + Win + molette : Pinwheel ne réagit pas.
-- [ ] Volume à 33 % (réglé dans Windows) puis un cran vers le haut : 40 %.
-- [ ] Sourdine active puis un cran vers le haut : la sourdine est retirée.
-- [ ] Touchpad (scroll à deux doigts) et molette libre, si disponibles.
-- [ ] Gestionnaire des tâches (fenêtre admin) au premier plan : noter le résultat.
-- [ ] Après une mise en veille et un réveil, puis après un verrouillage et un déverrouillage : ça fonctionne encore.
-- [ ] Après `Restart-Service audiosrv -Force` (PowerShell admin) : ça fonctionne encore.
+- [ ] In the Explorer and in a browser: the volume changes by 10%, the page does not scroll.
+- [ ] Release Win after turning the wheel: the Start menu does not open.
+- [ ] Win alone, without the wheel: the Start menu opens as usual.
+- [ ] Ctrl + Win + wheel: Pinwheel does nothing.
+- [ ] Volume at 33% (set in Windows), then one notch up: 40%.
+- [ ] Muted, then one notch up: unmuted.
+- [ ] Touchpad (two-finger scroll) and free-spinning wheel, when available.
+- [ ] Task Manager (admin window) in the foreground: note the result.
+- [ ] After sleep and wake, then after lock and unlock: it still works.
+- [ ] After `Restart-Service audiosrv -Force` (admin PowerShell): it still works.
 
-## Affichage
+## Display
 
-- [ ] Chaque style et chaque position, avec le bouton « Aperçu ».
-- [ ] L'affichage reste 1 s puis disparaît en fondu, et un nouveau cran relance le délai.
-- [ ] Il ne prend pas le focus : on peut continuer à taper dans la fenêtre active.
-- [ ] Deux écrans avec des mises à l'échelle différentes : il s'affiche net et à la bonne taille sur l'écran du curseur.
+- [ ] Each style and each position, with the "Preview" button.
+- [ ] The display stays 1 s then fades out, and a new notch restarts the delay.
+- [ ] It does not take the focus: typing in the active window keeps working.
+- [ ] Two monitors with different scaling: it shows sharp and at the right size on the cursor's monitor.
 
-## Raccourcis des sorties
+## Output shortcuts
 
-- [ ] Ajouter deux sorties avec Ctrl+Alt+1 et Ctrl+Alt+2 : chaque raccourci change la sortie et l'affiche.
-- [ ] Débrancher ou éteindre une sortie (casque Bluetooth) : elle reste dans la liste, marquée « déconnectée », et son raccourci affiche « déconnectée ».
-- [ ] La rebrancher : le raccourci refonctionne.
-- [ ] Même raccourci sur deux sorties : la fenêtre le signale.
-- [ ] Raccourci déjà pris par une autre application : la fenêtre le signale dans la seconde.
-- [ ] « Aussi pour les appels » : la sortie de communication change dans Paramètres Windows > Son.
-- [ ] Redémarrer le PC : tous les raccourcis sont toujours là.
+- [ ] Add two outputs with Ctrl+Alt+1 and Ctrl+Alt+2: each shortcut switches the output and shows it.
+- [ ] Unplug or turn off an output (Bluetooth headset): it stays in the list, marked "disconnected", and its shortcut shows "disconnected".
+- [ ] Plug it back: the shortcut works again.
+- [ ] Same shortcut on two outputs: the window says so.
+- [ ] Shortcut already taken by another app: the window says so within a second.
+- [ ] "Also for calls": the communications output changes in Windows Settings > Sound.
+- [ ] Restart the PC: every shortcut is still there.
 
-## Capture d'un raccourci
+## Shortcut capture
 
-- [ ] Choisir Win+E : l'Explorateur ne s'ouvre pas, la fenêtre affiche « Win+E » et l'avertissement sur Win.
-- [ ] Choisir une combinaison déjà attribuée à une autre sortie : elle ne change pas de sortie pendant la capture.
-- [ ] Choisir Ctrl droit + Maj gauche + une lettre, en relâchant les modificateurs dans un ordre quelconque : la combinaison est complète.
-- [ ] Choisir une touche seule (une lettre, puis F13) : l'avertissement apparaît pour la lettre, pas pour F13.
-- [ ] Une touche multimédia (lecture/pause) et une touche envoyée par un logiciel de macros : toutes deux acceptées.
-- [ ] Échap seul : la capture est annulée, l'ancien raccourci reste.
-- [ ] Ne rien taper pendant 15 s : la capture s'arrête.
-- [ ] Pendant la capture, cliquer dans une autre fenêtre puis taper : la capture s'arrête et les touches arrivent dans cette fenêtre.
-- [ ] Fermer et rouvrir les paramètres : le raccourci capturé est enregistré et fonctionne.
+- [ ] Set Win+E: the Explorer does not open, the window shows "Win+E" and the Win warning.
+- [ ] Set a combination already given to another output: it does not switch outputs during the capture.
+- [ ] Set right Ctrl + left Shift + a letter, releasing the modifiers in any order: the combination is complete.
+- [ ] Set a single key (a letter, then F13): the warning shows for the letter, not for F13.
+- [ ] A media key (play/pause) and a key sent by macro software: both accepted.
+- [ ] Escape alone: the capture is cancelled, the previous shortcut stays.
+- [ ] Type nothing for 15 s: the capture stops.
+- [ ] During the capture, click another window and type: the capture stops and the keys reach that window.
+- [ ] Close and reopen the settings: the captured shortcut is saved and works.
+
+## Language
+
+- [ ] Windows in French, language "Same as Windows": settings, tray menu and display in French. Windows in another language: in English.
+- [ ] Pick English, then Français: the settings window, its title, the tray menu and the display follow at once.
+- [ ] With the settings window open in one language, switch to the other, then run `pinwheel.exe --settings` again: the open window comes to the front.
+- [ ] Key names: a shortcut with Shift reads "Shift" in English, "Maj" in French; a letter follows the keyboard layout.

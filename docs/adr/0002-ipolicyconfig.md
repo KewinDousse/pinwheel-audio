@@ -1,21 +1,21 @@
-# ADR 0002 : changer la sortie par défaut avec IPolicyConfig
+# ADR 0002: switching the default output with IPolicyConfig
 
-## Décision
+## Decision
 
-La sortie par défaut est changée avec l'interface COM non documentée `IPolicyConfig` (IID `f8679f50-850a-41cf-9c72-430f290290c8`, classe `CPolicyConfigClient`, CLSID `870af99c-171d-4f9e-af0d-e63df40c2bc9`), méthode `SetDefaultEndpoint(id, rôle)`, onzième méthode après celles de `IUnknown`.
+The default output is changed with the undocumented COM interface `IPolicyConfig` (IID `f8679f50-850a-41cf-9c72-430f290290c8`, class `CPolicyConfigClient`, CLSID `870af99c-171d-4f9e-af0d-e63df40c2bc9`), method `SetDefaultEndpoint(id, role)`, the eleventh method after those of `IUnknown`.
 
-Un raccourci règle les rôles `eConsole` et `eMultimedia`, comme les paramètres Son de Windows. Le rôle `eCommunications` (applications d'appel) n'est réglé que si la sortie a l'option « Aussi pour les appels », désactivée par défaut.
+A shortcut sets the `eConsole` and `eMultimedia` roles, as the Windows Sound settings do. The `eCommunications` role (calling apps) is only set when the output has the "Also for calls" option, off by default.
 
-Le volume réglé par la molette est celui de la sortie par défaut `eMultimedia`.
+The wheel changes the volume of the `eMultimedia` default output.
 
-Après un changement, la sortie par défaut est relue : un écart est écrit dans le journal et signalé à l'écran.
+After a switch, the default output is read back: a mismatch is logged and shown on screen.
 
-## Raisons
+## Reasons
 
-- Windows n'offre aucune API publique pour changer la sortie par défaut. Les outils du même genre (AudioSwitcher, SoundSwitch, EarTrumpet) utilisent cette interface, stable depuis Windows 7.
-- Régler les appels par défaut peut faire basculer un casque Bluetooth sur son profil « mains libres », mono et de moindre qualité.
+- Windows offers no public API to change the default output. Tools of the same kind (AudioSwitcher, SoundSwitch, EarTrumpet) use this interface, stable since Windows 7.
+- Setting the communications default can switch a Bluetooth headset to its "hands-free" profile, mono and of lower quality.
 
-## Conséquences
+## Consequences
 
-- Une mise à jour de Windows pourrait casser l'interface sans erreur visible : la relecture après changement le détecte.
-- L'interface est isolée dans `crates/app/src/audio.rs` (module `policy`). Seule la position de `SetDefaultEndpoint` dans la vtable compte : les méthodes qui la précèdent sont déclarées sans paramètres et jamais appelées.
+- A Windows update could break the interface with no visible error: reading the default back after a switch detects it.
+- The interface is isolated in `crates/app/src/audio.rs` (module `policy`). Only the position of `SetDefaultEndpoint` in the vtable matters: the methods before it are declared without parameters and never called.
