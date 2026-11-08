@@ -11,20 +11,18 @@
 //! session is unlocked.
 
 use crate::ipc::WM_VOLUME_NOTCHES;
+use crate::thread::{MessageThread, run_message_loop};
 use sounddock_core::volume::WheelAccumulator;
 use std::cell::{Cell, RefCell};
 use std::sync::atomic::{AtomicIsize, Ordering};
-use std::sync::mpsc;
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
-use windows::Win32::System::Threading::GetCurrentThreadId;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     GetAsyncKeyState, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBD_EVENT_FLAGS, KEYBDINPUT, KEYEVENTF_KEYUP, SendInput,
     VIRTUAL_KEY, VK_CONTROL, VK_LWIN, VK_MENU, VK_RWIN, VK_SHIFT,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    CallNextHookEx, GetMessageW, HC_ACTION, HHOOK, MSG, MSLLHOOKSTRUCT, PM_NOREMOVE, PeekMessageW, PostMessageW,
-    PostThreadMessageW, SetTimer, SetWindowsHookExW, UnhookWindowsHookEx, WH_MOUSE_LL, WM_APP, WM_MOUSEWHEEL, WM_QUIT,
-    WM_TIMER,
+    CallNextHookEx, HC_ACTION, HHOOK, MSLLHOOKSTRUCT, PostMessageW, SetTimer, SetWindowsHookExW, UnhookWindowsHookEx,
+    WH_MOUSE_LL, WM_APP, WM_MOUSEWHEEL, WM_TIMER,
 };
 
 const REINSTALL_INTERVAL_MS: u32 = 5 * 60 * 1000;
@@ -32,7 +30,7 @@ const WM_REINSTALL: u32 = WM_APP + 100;
 
 /// Unassigned virtual key. Pressing it while Win is down tells Windows the
 /// Win key was used in a combination, so releasing Win does not open Start.
-const VK_MASK: VIRTUAL_KEY = VIRTUAL_KEY(0xE8);
+pub const VK_MASK: VIRTUAL_KEY = VIRTUAL_KEY(0xE8);
 
 static MAIN_WINDOW: AtomicIsize = AtomicIsize::new(0);
 
@@ -43,46 +41,30 @@ thread_local! {
 
 /// Handle to the hook thread. Dropping it stops the thread.
 pub struct HookThread {
-    thread_id: u32,
+    thread: MessageThread,
 }
 
 impl HookThread {
     /// Starts the hook thread, which posts [`WM_VOLUME_NOTCHES`] to `main_window`.
-    pub fn start(main_window: HWND) -> Self {
+    pub fn start(main_window: HWND) -> std::io::Result<Self> {
         MAIN_WINDOW.store(main_window.0 as isize, Ordering::SeqCst);
-        let (sender, receiver) = mpsc::channel();
-        std::thread::Builder::new()
-            .name("wheel-hook".into())
-            .spawn(move || run(&sender))
-            .expect("spawning the hook thread");
-        let thread_id = receiver.recv().expect("hook thread id");
-        Self { thread_id }
+        let thread = MessageThread::spawn("wheel-hook", run)?;
+        Ok(Self { thread })
     }
 
     pub fn reinstall(&self) {
-        let _ = unsafe { PostThreadMessageW(self.thread_id, WM_REINSTALL, WPARAM(0), LPARAM(0)) };
+        self.thread.post(WM_REINSTALL);
     }
 }
 
-impl Drop for HookThread {
-    fn drop(&mut self) {
-        let _ = unsafe { PostThreadMessageW(self.thread_id, WM_QUIT, WPARAM(0), LPARAM(0)) };
-    }
-}
-
-fn run(ready: &mpsc::Sender<u32>) {
-    let mut msg = MSG::default();
-    // Creates the thread's message queue before anyone posts to it.
-    let _ = unsafe { PeekMessageW(&mut msg, None, WM_APP, WM_APP, PM_NOREMOVE) };
-    let _ = ready.send(unsafe { GetCurrentThreadId() });
-
+fn run() {
     install();
     unsafe { SetTimer(None, 0, REINSTALL_INTERVAL_MS, None) };
-    while unsafe { GetMessageW(&mut msg, None, 0, 0) }.0 > 0 {
+    run_message_loop(|msg| {
         if msg.message == WM_TIMER || msg.message == WM_REINSTALL {
             install();
         }
-    }
+    });
     uninstall();
 }
 

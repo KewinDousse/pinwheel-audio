@@ -26,10 +26,69 @@ const VK_ESCAPE: u16 = 0x1B;
 const VK_F12: u16 = 0x7B;
 const VK_F13: u16 = 0x7C;
 const VK_F24: u16 = 0x87;
+/// What Windows reports for keys it has no virtual key for (some laptop
+/// Fn keys): several physical keys share it.
+const VK_NONE: u16 = 0xFF;
 
-/// Virtual keys of Shift, Ctrl, Alt and Win (generic, left and right): they
-/// are modifiers, never the main key.
-pub const MODIFIER_KEYS: [u16; 11] = [0x10, 0x11, 0x12, 0x5B, 0x5C, 0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5];
+/// Virtual keys of each modifier: generic, left, right (Win has no generic one).
+const CTRL_KEYS: [u16; 3] = [0x11, 0xA2, 0xA3];
+const ALT_KEYS: [u16; 3] = [0x12, 0xA4, 0xA5];
+const SHIFT_KEYS: [u16; 3] = [0x10, 0xA0, 0xA1];
+const WIN_KEYS: [u16; 2] = [0x5B, 0x5C];
+
+/// A modifier is never the main key.
+pub fn is_modifier(vk: u16) -> bool {
+    [&CTRL_KEYS[..], &ALT_KEYS, &SHIFT_KEYS, &WIN_KEYS]
+        .iter()
+        .any(|keys| keys.contains(&vk))
+}
+
+/// A key that can be the main key of a shortcut.
+pub fn is_usable_key(vk: u16) -> bool {
+    vk != 0 && vk != VK_NONE && !is_modifier(vk)
+}
+
+/// Modifier keys held down, each side on its own: releasing left Shift
+/// while right Shift is still down keeps Shift held.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct HeldModifiers {
+    held: u16,
+}
+
+impl HeldModifiers {
+    fn bit(vk: u16) -> Option<u16> {
+        let mut all = CTRL_KEYS.iter().chain(&ALT_KEYS).chain(&SHIFT_KEYS).chain(&WIN_KEYS);
+        all.position(|&m| m == vk).map(|index| 1 << index)
+    }
+
+    /// Records a key event. Returns `false` when `vk` is not a modifier.
+    pub fn update(&mut self, vk: u16, down: bool) -> bool {
+        let Some(bit) = Self::bit(vk) else { return false };
+        if down {
+            self.held |= bit;
+        } else {
+            self.held &= !bit;
+        }
+        true
+    }
+
+    fn any(&self, keys: &[u16]) -> bool {
+        keys.iter()
+            .filter_map(|&vk| Self::bit(vk))
+            .any(|bit| self.held & bit != 0)
+    }
+
+    /// The shortcut made of the held modifiers and `key`.
+    pub fn with_key(&self, key: u16) -> Hotkey {
+        Hotkey {
+            ctrl: self.any(&CTRL_KEYS),
+            alt: self.any(&ALT_KEYS),
+            shift: self.any(&SHIFT_KEYS),
+            win: self.any(&WIN_KEYS),
+            key,
+        }
+    }
+}
 
 /// Escape alone cancels a capture in the settings window.
 pub fn is_cancel(hotkey: &Hotkey) -> bool {
@@ -145,7 +204,7 @@ impl fmt::Display for HotkeyWarning {
 impl Hotkey {
     /// Checks that `RegisterHotKey` can take the combination.
     pub fn validate(&self) -> Result<(), HotkeyError> {
-        if self.key == 0 || MODIFIER_KEYS.contains(&self.key) {
+        if !is_usable_key(self.key) {
             return Err(HotkeyError::NoKey);
         }
         if self.key == VK_F12 {
@@ -247,6 +306,34 @@ mod tests {
             hotkey(false, false, false, true, 0x41).warnings(),
             [HotkeyWarning::UsesWin]
         );
+    }
+
+    #[test]
+    fn rejects_unmapped_key() {
+        assert_eq!(
+            hotkey(true, false, false, false, VK_NONE).validate(),
+            Err(HotkeyError::NoKey)
+        );
+    }
+
+    #[test]
+    fn tracks_each_side_of_a_modifier() {
+        let mut held = HeldModifiers::default();
+        assert!(held.update(0xA0, true));
+        assert!(held.update(0xA1, true));
+        assert!(held.update(0xA0, false));
+        assert_eq!(held.with_key(0x41), hotkey(false, false, true, false, 0x41));
+        assert!(held.update(0xA1, false));
+        assert_eq!(held.with_key(0x41), hotkey(false, false, false, false, 0x41));
+    }
+
+    #[test]
+    fn altgr_reads_as_ctrl_alt() {
+        let mut held = HeldModifiers::default();
+        held.update(0xA2, true);
+        held.update(0xA5, true);
+        assert_eq!(held.with_key(0x45), hotkey(true, true, false, false, 0x45));
+        assert!(!held.update(0x45, true));
     }
 
     #[test]

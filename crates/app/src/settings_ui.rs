@@ -26,8 +26,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 use windows::core::{PCWSTR, w};
 
 const REFRESH_EVERY: Duration = Duration::from_secs(1);
-/// A capture left running would keep swallowing every key.
-const CAPTURE_TIMEOUT: Duration = Duration::from_secs(15);
+const CAPTURE_FAILED: &str = "Capture du raccourci impossible : voir le journal.";
 
 pub fn run() {
     let Some(_lock) = InstanceLock::acquire(ipc::SETTINGS_MUTEX) else {
@@ -113,7 +112,6 @@ struct SettingsApp {
 struct ActiveCapture {
     index: usize,
     capture: Capture,
-    started: Instant,
 }
 
 impl SettingsApp {
@@ -149,30 +147,29 @@ impl SettingsApp {
         self.capture = None;
         let ctx = ctx.clone();
         match Capture::start(move || ctx.request_repaint()) {
-            Some(capture) => {
-                self.capture = Some(ActiveCapture {
-                    index,
-                    capture,
-                    started: Instant::now(),
-                })
+            Ok(capture) => self.capture = Some(ActiveCapture { index, capture }),
+            Err(e) => {
+                log::error!("starting the shortcut capture failed: {e}");
+                self.error = Some(CAPTURE_FAILED.into());
             }
-            None => self.error = Some("Capture du raccourci impossible : voir le journal.".into()),
         }
     }
 
-    fn poll_capture(&mut self, ctx: &egui::Context) {
+    /// The capture ends by itself (key pressed, Escape, focus lost, timeout)
+    /// and wakes the UI up with its result.
+    fn poll_capture(&mut self) {
         let Some(active) = &self.capture else { return };
         let index = active.index;
-        match active.capture.poll() {
-            Some(Captured::Hotkey(hotkey)) => {
+        let Some(result) = active.capture.poll() else { return };
+        self.capture = None;
+        match result {
+            Captured::Hotkey(hotkey) => {
                 if let Some(output) = self.settings.outputs.get_mut(index) {
                     output.hotkey = Some(hotkey);
                 }
-                self.capture = None;
             }
-            Some(Captured::Cancelled) => self.capture = None,
-            None if active.started.elapsed() > CAPTURE_TIMEOUT => self.capture = None,
-            None => ctx.request_repaint_after(Duration::from_millis(250)),
+            Captured::Cancelled => {}
+            Captured::Failed => self.error = Some(CAPTURE_FAILED.into()),
         }
     }
 
@@ -373,10 +370,11 @@ impl SettingsApp {
 impl eframe::App for SettingsApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.refresh();
-        self.poll_capture(ui.ctx());
         ui.ctx().request_repaint_after(REFRESH_EVERY);
 
+        // Taken before the capture result lands, so that it gets saved.
         let before = self.settings.clone();
+        self.poll_capture();
         egui::CentralPanel::default().show(ui, |ui| {
             egui::ScrollArea::vertical().show(ui, |ui| {
                 self.banners(ui);

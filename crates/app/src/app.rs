@@ -52,7 +52,8 @@ struct App {
     hotkeys: Hotkeys,
     osd: Option<Osd>,
     tray: Tray,
-    hook: HookThread,
+    /// `None` when the thread could not start: shortcuts still work.
+    hook: Option<HookThread>,
 }
 
 /// Runs the background process until "Quit".
@@ -92,7 +93,9 @@ pub fn run() {
         hotkeys: Hotkeys::default(),
         osd,
         tray: Tray::new(hwnd),
-        hook: HookThread::start(hwnd),
+        hook: HookThread::start(hwnd)
+            .inspect_err(|e| log::error!("starting the wheel hook failed: {e}"))
+            .ok(),
     };
     app.report_load_issue(issue);
     app.register_hotkeys();
@@ -294,6 +297,12 @@ impl App {
         }
     }
 
+    fn reinstall_hook(&mut self) {
+        if let Some(hook) = &self.hook {
+            hook.reinstall();
+        }
+    }
+
     fn preview(&mut self) {
         self.reload();
         if let Some(volume) = self.with_audio(Audio::volume) {
@@ -338,8 +347,8 @@ unsafe extern "system" fn window_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lpar
         WM_RELOAD => with_app(App::reload),
         WM_PREVIEW_OSD => with_app(App::preview),
         WM_TIMER => with_app(|app| app.on_timer(wparam.0)),
-        WM_POWERBROADCAST if wparam.0 as u32 == PBT_APMRESUMEAUTOMATIC => with_app(|app| app.hook.reinstall()),
-        WM_WTSSESSION_CHANGE if wparam.0 as u32 == WTS_SESSION_UNLOCK => with_app(|app| app.hook.reinstall()),
+        WM_POWERBROADCAST if wparam.0 as u32 == PBT_APMRESUMEAUTOMATIC => with_app(App::reinstall_hook),
+        WM_WTSSESSION_CHANGE if wparam.0 as u32 == WTS_SESSION_UNLOCK => with_app(App::reinstall_hook),
         WM_DESTROY => unsafe { PostQuitMessage(0) },
         _ if msg != 0 && msg == TASKBAR_CREATED.get() => with_app(|app| {
             app.tray.hide();

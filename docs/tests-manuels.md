@@ -39,3 +39,15 @@ Ce que les tests automatiques ne couvrent pas. Le journal (`%LOCALAPPDATA%\Sound
 - [ ] Raccourci déjà pris par une autre application : la fenêtre le signale dans la seconde.
 - [ ] « Aussi pour les appels » : la sortie de communication change dans Paramètres Windows > Son.
 - [ ] Redémarrer le PC : tous les raccourcis sont toujours là.
+
+## Capture d'un raccourci
+
+- [ ] Choisir Win+E : l'Explorateur ne s'ouvre pas, la fenêtre affiche « Win+E » et l'avertissement sur Win.
+- [ ] Choisir une combinaison déjà attribuée à une autre sortie : elle ne change pas de sortie pendant la capture.
+- [ ] Choisir Ctrl droit + Maj gauche + une lettre, en relâchant les modificateurs dans un ordre quelconque : la combinaison est complète.
+- [ ] Choisir une touche seule (une lettre, puis F13) : l'avertissement apparaît pour la lettre, pas pour F13.
+- [ ] Une touche multimédia (lecture/pause) et une touche envoyée par un logiciel de macros : toutes deux acceptées.
+- [ ] Échap seul : la capture est annulée, l'ancien raccourci reste.
+- [ ] Ne rien taper pendant 15 s : la capture s'arrête.
+- [ ] Pendant la capture, cliquer dans une autre fenêtre puis taper : la capture s'arrête et les touches arrivent dans cette fenêtre.
+- [ ] Fermer et rouvrir les paramètres : le raccourci capturé est enregistré et fonctionne.

@@ -28,6 +28,8 @@ Tout l'état est dans `App` (`crates/app/src/app.rs`), sur le thread principal, 
 
 Le hook souris tourne sur son propre thread (`hook.rs`), voir [ADR 0003](adr/0003-win-wheel-hook.md).
 
+Les hooks bas niveau ont besoin d'une boucle de messages sur leur thread. `thread.rs` fournit ce thread (`MessageThread`) : il vit jusqu'à ce que son propriétaire le libère, et ne se termine qu'après `WM_QUIT`, pour qu'aucun message posté plus tard n'arrive à un autre thread qui aurait repris son identifiant.
+
 ### Chemin d'un cran de molette
 
 1. Le hook voit `WM_MOUSEWHEEL` avec Win seul enfoncé.
@@ -42,6 +44,15 @@ Le hook souris tourne sur son propre thread (`hook.rs`), voir [ADR 0003](adr/000
 2. `resolve` retrouve la sortie parmi celles de Windows, voir [ADR 0004](adr/0004-identite-des-sorties.md).
 3. `IPolicyConfig::SetDefaultEndpoint` la rend sortie par défaut, voir [ADR 0002](adr/0002-ipolicyconfig.md).
 4. La sortie par défaut est relue pour vérifier le changement, puis affichée.
+
+## Capture d'un raccourci
+
+Dans la fenêtre de paramètres, « Choisir… » lance `keys::Capture`, qui pose un hook clavier bas niveau sur un `MessageThread`. Tant que la capture dure, le hook avale toutes les touches : ni le shell ni le processus d'arrière-plan ne les voient, donc Win+E n'ouvre pas l'Explorateur et les raccourcis existants ne se déclenchent pas. N'importe quelle touche, combinaison avec Win comprise, peut ainsi être choisie.
+
+- La combinaison est complète au premier appui sur une touche qui n'est pas un modificateur. Ctrl, Alt, Maj et Win sont suivis côté gauche et côté droit (`HeldModifiers`), pour qu'en relâcher un ne fasse pas oublier l'autre.
+- Échap seul annule. La capture s'arrête aussi d'elle-même au bout de 15 s, ou dès qu'une autre application prend le focus : le hook est global, et une touche tapée ailleurs ne doit pas être volée.
+- Les touches injectées sont acceptées, car les logiciels de macros (G Hub, Synapse, AutoHotkey) passent par là. Seule `vkE8`, envoyée par le hook de la molette, est ignorée.
+- `Hotkey::validate` refuse une combinaison sans touche principale, et F12, réservée par Windows. `Hotkey::warnings` signale celles qui restent possibles mais gênantes : Win, ou une combinaison sans Ctrl, Alt ni Win, dont la touche ne marchera plus dans les autres applications (F13 à F24 exceptées).
 
 ## Robustesse
 

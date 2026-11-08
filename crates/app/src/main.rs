@@ -33,6 +33,8 @@ mod settings_ui;
 #[cfg(windows)]
 mod startup;
 #[cfg(windows)]
+mod thread;
+#[cfg(windows)]
 mod tray;
 
 #[cfg(windows)]
