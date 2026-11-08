@@ -5,8 +5,9 @@
 //! restarts the hold. The timers belong to the main window, which forwards
 //! `WM_TIMER` to [`Osd::on_timer`], so all state lives on the main thread.
 
+use crate::accent;
 use pinwheel_core::i18n::Lang;
-use pinwheel_core::osd::{Content, Fonts, render};
+use pinwheel_core::osd::{Content, Fonts, Look, SHADOW_MARGIN, render};
 use pinwheel_core::settings::{OsdPosition, OsdSettings};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
@@ -34,7 +35,8 @@ const FADE_TICK_MS: u32 = 15;
 pub const TIMER_HOLD: usize = 10;
 pub const TIMER_FADE: usize = 11;
 
-/// Distance from the top or bottom of the work area, in logical pixels.
+/// Distance from the top or bottom of the work area to the panel, in logical
+/// pixels.
 const EDGE_MARGIN_TOP: f32 = 48.0;
 const EDGE_MARGIN_BOTTOM: f32 = 72.0;
 
@@ -102,18 +104,26 @@ impl Osd {
         let _ = unsafe { GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &mut dpi_x, &mut dpi_y) };
         let scale = dpi_x as f32 / 96.0;
 
-        let pixmap = render(content, settings.style, scale, &self.fonts, lang);
+        let look = Look {
+            style: settings.style,
+            scale,
+            accent: accent::current(),
+            lang,
+        };
+        let pixmap = render(content, look, &self.fonts);
         let Some(surface) = Surface::new(&pixmap) else {
             log::error!("creating the display bitmap failed");
             return;
         };
         let work = info.rcWork;
         let (width, height) = (pixmap.width() as i32, pixmap.height() as i32);
+        // The shadow may spill into the margin; the panel keeps its distance.
+        let shadow = (SHADOW_MARGIN * scale).round() as i32;
         let x = work.left + (work.right - work.left - width) / 2;
         let y = match settings.position {
-            OsdPosition::Top => work.top + (EDGE_MARGIN_TOP * scale) as i32,
+            OsdPosition::Top => work.top + (EDGE_MARGIN_TOP * scale) as i32 - shadow,
             OsdPosition::Center => work.top + (work.bottom - work.top - height) / 2,
-            OsdPosition::Bottom => work.bottom - height - (EDGE_MARGIN_BOTTOM * scale) as i32,
+            OsdPosition::Bottom => work.bottom - height - (EDGE_MARGIN_BOTTOM * scale) as i32 + shadow,
         };
 
         let screen = unsafe { GetDC(None) };

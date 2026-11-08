@@ -33,6 +33,8 @@ What the automated tests do not cover. The log (`%LOCALAPPDATA%\Pinwheel\logs\pi
 - [ ] The display stays 1 s then fades out, and a new notch restarts the delay.
 - [ ] It does not take the focus: typing in the active window keeps working.
 - [ ] Two monitors with different scaling: it shows sharp and at the right size on the cursor's monitor.
+- [ ] Change the accent colour (Settings > Personalization > Colors): the next display's gauge takes it.
+- [ ] Display at the bottom: the panel stays the same distance above the taskbar, its shadow does not touch it.
 
 ## Output shortcuts
 

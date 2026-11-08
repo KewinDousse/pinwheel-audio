@@ -1,7 +1,9 @@
 //! Drawing of the on-screen display into a premultiplied RGBA pixmap.
 //!
 //! Sizes are in logical pixels (96 DPI) and multiplied by the monitor scale.
-//! The Windows app copies the pixmap into a layered window.
+//! The Windows app copies the pixmap into a layered window. The look follows
+//! the Windows 11 flyouts: dark surface, 8 px corners, soft shadow, and a
+//! gauge in the system accent colour.
 
 use crate::i18n::{Lang, Texts};
 use crate::settings::OsdStyle;
@@ -21,11 +23,24 @@ pub enum Content {
 }
 
 type Rgba = [u8; 4];
-const BACKGROUND: Rgba = [28, 28, 28, 235];
-const BORDER: Rgba = [255, 255, 255, 24];
-const TRACK: Rgba = [255, 255, 255, 60];
-const FILL: Rgba = [255, 255, 255, 255];
-const FILL_MUTED: Rgba = [255, 255, 255, 110];
+/// An opaque colour, such as the Windows accent.
+pub type Rgb = [u8; 3];
+
+/// Gauge colour when Windows gives no accent colour.
+pub const DEFAULT_ACCENT: Rgb = [0x4C, 0xC2, 0xFF];
+
+/// Room around the panel for its shadow, on every side, in logical pixels.
+/// The app subtracts it when placing the window.
+pub const SHADOW_MARGIN: f32 = 12.0;
+const SHADOW_OFFSET_Y: f32 = 2.0;
+const SHADOW_BLUR: f32 = 10.0;
+const SHADOW_LAYER_ALPHA: u8 = 6;
+
+const RADIUS: f32 = 8.0;
+const BACKGROUND: Rgba = [44, 44, 44, 250];
+const BORDER: Rgba = [255, 255, 255, 20];
+const TRACK: Rgba = [255, 255, 255, 72];
+const MUTED_ALPHA: u8 = 100;
 const TEXT: Rgba = [255, 255, 255, 255];
 
 const TEXT_MAX_WIDTH: f32 = 480.0;
@@ -60,41 +75,77 @@ impl Fonts {
     }
 }
 
-/// Draws `content` at `scale` (monitor DPI / 96).
-pub fn render(content: &Content, style: OsdStyle, scale: f32, fonts: &Fonts, lang: Lang) -> Pixmap {
-    let texts = lang.texts();
+/// What the display needs besides its content.
+#[derive(Debug, Clone, Copy)]
+pub struct Look {
+    pub style: OsdStyle,
+    /// Monitor DPI / 96.
+    pub scale: f32,
+    pub accent: Rgb,
+    pub lang: Lang,
+}
+
+/// Draws `content`, with [`SHADOW_MARGIN`] of shadow around the panel.
+pub fn render(content: &Content, look: Look, fonts: &Fonts) -> Pixmap {
+    let texts = look.lang.texts();
     match content {
-        Content::Volume(volume) => match style {
-            OsdStyle::Bar => bar(*volume, scale),
-            OsdStyle::Pill => pill(*volume, scale, fonts, texts),
-            OsdStyle::BigNumber => big_number(*volume, scale, fonts, texts),
+        Content::Volume(volume) => match look.style {
+            OsdStyle::Bar => bar(*volume, look),
+            OsdStyle::Pill => pill(*volume, look, fonts, texts),
+            OsdStyle::BigNumber => big_number(*volume, look, fonts, texts),
         },
-        Content::Output(name) => label(name, true, style, scale, fonts),
-        Content::Notice(text) => label(text, false, style, scale, fonts),
+        Content::Output(name) => label(name, true, look, fonts),
+        Content::Notice(text) => label(text, false, look, fonts),
     }
 }
 
-/// A canvas of `width` × `height` logical pixels with the rounded background.
+/// A panel of `width` × `height` logical pixels on its shadow. Drawing
+/// coordinates start at the panel's top-left corner.
 struct Canvas {
     pixmap: Pixmap,
     scale: f32,
+    accent: Rgb,
 }
 
 impl Canvas {
-    fn new(width: f32, height: f32, radius: f32, scale: f32) -> Self {
-        let pixmap =
-            Pixmap::new((width * scale).ceil() as u32, (height * scale).ceil() as u32).expect("non-empty display");
-        let mut canvas = Self { pixmap, scale };
-        canvas.fill(&rounded_rect(0.5, 0.5, width - 1.0, height - 1.0, radius - 0.5), BORDER);
+    fn new(width: f32, height: f32, look: Look) -> Self {
+        let outer = |size: f32| ((size + 2.0 * SHADOW_MARGIN) * look.scale).ceil() as u32;
+        let pixmap = Pixmap::new(outer(width), outer(height)).expect("non-empty display");
+        let mut canvas = Self {
+            pixmap,
+            scale: look.scale,
+            accent: look.accent,
+        };
+        canvas.shadow(width, height);
+        canvas.fill(&rounded_rect(0.5, 0.5, width - 1.0, height - 1.0, RADIUS - 0.5), BORDER);
         canvas.fill(
-            &rounded_rect(1.0, 1.0, width - 2.0, height - 2.0, radius - 1.0),
+            &rounded_rect(1.0, 1.0, width - 2.0, height - 2.0, RADIUS - 1.0),
             BACKGROUND,
         );
         canvas
     }
 
+    /// Stacked translucent outlines, each one pixel smaller: tiny-skia has
+    /// no blur, and the panel covers all but the fading edge.
+    fn shadow(&mut self, width: f32, height: f32) {
+        let color = [0, 0, 0, SHADOW_LAYER_ALPHA];
+        for step in 0..SHADOW_BLUR as u32 {
+            let grow = SHADOW_BLUR - step as f32;
+            self.fill(
+                &rounded_rect(
+                    -grow,
+                    SHADOW_OFFSET_Y - grow,
+                    width + 2.0 * grow,
+                    height + 2.0 * grow,
+                    RADIUS + grow,
+                ),
+                color,
+            );
+        }
+    }
+
     fn transform(&self) -> Transform {
-        Transform::from_scale(self.scale, self.scale)
+        Transform::from_translate(SHADOW_MARGIN, SHADOW_MARGIN).post_scale(self.scale, self.scale)
     }
 
     fn fill(&mut self, path: &Path, color: Rgba) {
@@ -122,7 +173,8 @@ impl Canvas {
         );
         let filled = (x1 - x0) * volume.level.clamp(0.0, 1.0);
         if filled > 0.5 {
-            let color = if volume.muted { FILL_MUTED } else { FILL };
+            let [r, g, b] = self.accent;
+            let color = [r, g, b, if volume.muted { MUTED_ALPHA } else { 255 }];
             self.fill(
                 &rounded_rect(x0, y - height / 2.0, filled.max(height), height, height / 2.0),
                 color,
@@ -192,24 +244,24 @@ impl Canvas {
                 font,
                 size * self.scale,
                 text,
-                x * self.scale,
-                baseline * self.scale,
+                (x + SHADOW_MARGIN) * self.scale,
+                (baseline + SHADOW_MARGIN) * self.scale,
                 TEXT,
             );
         }
     }
 }
 
-fn bar(volume: VolumeState, scale: f32) -> Pixmap {
+fn bar(volume: VolumeState, look: Look) -> Pixmap {
     let (width, height) = (300.0, 24.0);
-    let mut canvas = Canvas::new(width, height, height / 2.0, scale);
+    let mut canvas = Canvas::new(width, height, look);
     canvas.gauge(14.0, width - 14.0, height / 2.0, volume);
     canvas.pixmap
 }
 
-fn pill(volume: VolumeState, scale: f32, fonts: &Fonts, texts: &Texts) -> Pixmap {
+fn pill(volume: VolumeState, look: Look, fonts: &Fonts, texts: &Texts) -> Pixmap {
     let (width, height) = (300.0, 52.0);
-    let mut canvas = Canvas::new(width, height, height / 2.0, scale);
+    let mut canvas = Canvas::new(width, height, look);
     let size = 17.0;
     let font = fonts.bold.as_ref();
     // Room for the widest label, so the gauge does not move with the value.
@@ -228,9 +280,9 @@ fn pill(volume: VolumeState, scale: f32, fonts: &Fonts, texts: &Texts) -> Pixmap
     canvas.pixmap
 }
 
-fn big_number(volume: VolumeState, scale: f32, fonts: &Fonts, texts: &Texts) -> Pixmap {
+fn big_number(volume: VolumeState, look: Look, fonts: &Fonts, texts: &Texts) -> Pixmap {
     let (width, height) = (180.0, 150.0);
-    let mut canvas = Canvas::new(width, height, 22.0, scale);
+    let mut canvas = Canvas::new(width, height, look);
     let baseline = 82.0;
     if volume.muted {
         let size = 34.0;
@@ -256,15 +308,15 @@ fn big_number(volume: VolumeState, scale: f32, fonts: &Fonts, texts: &Texts) -> 
 }
 
 /// Output name or notice, with a speaker icon for outputs.
-fn label(text: &str, with_icon: bool, style: OsdStyle, scale: f32, fonts: &Fonts) -> Pixmap {
-    let height = if style == OsdStyle::Bar { 40.0 } else { 52.0 };
+fn label(text: &str, with_icon: bool, look: Look, fonts: &Fonts) -> Pixmap {
+    let height = if look.style == OsdStyle::Bar { 40.0 } else { 52.0 };
     let size = 15.0;
     let font = fonts.regular.as_ref();
     let text = truncate(font, size, text, TEXT_MAX_WIDTH);
     let icon = if with_icon { 20.0 + 10.0 } else { 0.0 };
     let padding = 20.0;
     let width = (padding * 2.0 + icon + text_width(font, size, &text)).max(160.0);
-    let mut canvas = Canvas::new(width, height, height / 2.0, scale);
+    let mut canvas = Canvas::new(width, height, look);
     let content_width = icon + text_width(font, size, &text);
     let x = (width - content_width) / 2.0;
     if with_icon {
@@ -383,4 +435,72 @@ fn rounded_rect(x: f32, y: f32, w: f32, h: f32, radius: f32) -> Path {
     pb.cubic_to(x, y + r - k, x + r - k, y, x + r, y);
     pb.close();
     pb.finish().expect("valid rectangle")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const ACCENT: Rgb = [200, 40, 120];
+
+    fn look(scale: f32) -> Look {
+        Look {
+            style: OsdStyle::Bar,
+            scale,
+            accent: ACCENT,
+            lang: Lang::English,
+        }
+    }
+
+    fn no_fonts() -> Fonts {
+        Fonts::from_candidates(&[], &[])
+    }
+
+    fn volume(level: f32, muted: bool) -> Content {
+        Content::Volume(VolumeState { level, muted })
+    }
+
+    /// Straight-alpha colour of the pixel at logical `(x, y)` of the panel.
+    fn pixel(pixmap: &Pixmap, scale: f32, x: f32, y: f32) -> Rgba {
+        let px = ((x + SHADOW_MARGIN) * scale) as u32;
+        let py = ((y + SHADOW_MARGIN) * scale) as u32;
+        let c = pixmap.pixel(px, py).unwrap().demultiply();
+        [c.red(), c.green(), c.blue(), c.alpha()]
+    }
+
+    #[test]
+    fn the_shadow_margin_surrounds_the_panel() {
+        for scale in [1.0, 1.5] {
+            let pixmap = render(&volume(0.4, false), look(scale), &no_fonts());
+            assert_eq!(pixmap.width(), ((300.0 + 2.0 * SHADOW_MARGIN) * scale).ceil() as u32);
+            assert_eq!(pixmap.height(), ((24.0 + 2.0 * SHADOW_MARGIN) * scale).ceil() as u32);
+            assert_eq!(
+                pixmap.pixel(0, 0).unwrap().alpha(),
+                0,
+                "the corner is beyond the shadow"
+            );
+        }
+    }
+
+    #[test]
+    fn the_gauge_takes_the_accent_colour() {
+        let pixmap = render(&volume(0.5, false), look(1.0), &no_fonts());
+        assert_eq!(pixel(&pixmap, 1.0, 40.0, 12.0), [ACCENT[0], ACCENT[1], ACCENT[2], 255]);
+        let [r, g, b, _] = pixel(&pixmap, 1.0, 250.0, 12.0);
+        assert!(
+            r == g && g == b && r > BACKGROUND[0],
+            "grey track beyond the level: {r} {g} {b}"
+        );
+    }
+
+    #[test]
+    fn a_muted_gauge_fades_the_accent() {
+        let muted = render(&volume(0.5, true), look(1.0), &no_fonts());
+        let [r, g, b, _] = pixel(&muted, 1.0, 40.0, 12.0);
+        let [ar, ag, ab] = ACCENT;
+        assert!(
+            r < ar && g > ag && b < ab,
+            "accent blended with the background: {r} {g} {b}"
+        );
+    }
 }

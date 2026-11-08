@@ -6,7 +6,7 @@
 //! Rows alternate English and French.
 
 use pinwheel_core::i18n::Lang;
-use pinwheel_core::osd::{Content, Fonts, render};
+use pinwheel_core::osd::{Content, DEFAULT_ACCENT, Fonts, Look, render};
 use pinwheel_core::settings::OsdStyle;
 use pinwheel_core::volume::VolumeState;
 use std::path::PathBuf;
@@ -41,7 +41,15 @@ fn main() {
     let images: Vec<Vec<Pixmap>> = OsdStyle::ALL
         .iter()
         .flat_map(|&style| Lang::ALL.map(|lang| (style, lang)))
-        .map(|(style, lang)| contents.iter().map(|c| render(c, style, scale, &fonts, lang)).collect())
+        .map(|(style, lang)| {
+            let look = Look {
+                style,
+                scale,
+                accent: DEFAULT_ACCENT,
+                lang,
+            };
+            contents.iter().map(|c| render(c, look, &fonts)).collect()
+        })
         .collect();
 
     let gap = 24;

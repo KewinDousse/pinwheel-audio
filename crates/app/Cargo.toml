@@ -13,9 +13,12 @@ eframe = "0.37.0"
 log = "0.4.35"
 pinwheel-core = { path = "../core" }
 tiny-skia = "0.12.0"
+
+# Only the app's Windows code uses them, and the WinRT parts do not build elsewhere.
+[target.'cfg(windows)'.dependencies]
 windows-core = "0.62.2"
 
-[dependencies.windows]
+[target.'cfg(windows)'.dependencies.windows]
 version = "0.62.2"
 features = [
     "Win32_Devices_FunctionDiscovery",
@@ -38,6 +41,7 @@ features = [
     "Win32_UI_Shell",
     "Win32_UI_Shell_PropertiesSystem",
     "Win32_UI_WindowsAndMessaging",
+    "UI_ViewManagement",
 ]
 
 [build-dependencies]

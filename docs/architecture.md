@@ -68,4 +68,4 @@ Texts come from `crates/core/src/i18n.rs`, in the language of the settings or el
 
 ## Display
 
-`crates/core/src/osd.rs` draws into a premultiplied RGBA image (tiny-skia for shapes, ab_glyph for text, with the Windows Segoe UI fonts). `crates/app/src/osd.rs` copies it into a `WS_EX_LAYERED` window set by `UpdateLayeredWindow`. The window never takes the focus (`WS_EX_NOACTIVATE`), lets clicks through (`WS_EX_TRANSPARENT`) and does not appear in Alt+Tab (`WS_EX_TOOLWINDOW`). It does not show above a game in exclusive fullscreen.
+`crates/core/src/osd.rs` draws into a premultiplied RGBA image (tiny-skia for shapes, ab_glyph for text, with the Windows Segoe UI fonts). It follows the Windows 11 flyouts: dark surface, 8 px corners, a shadow drawn into the image's margin, and a gauge in the accent colour, read from Windows (`UISettings`, `AccentLight2`) at each display. `crates/app/src/osd.rs` copies it into a `WS_EX_LAYERED` window set by `UpdateLayeredWindow`. The window never takes the focus (`WS_EX_NOACTIVATE`), lets clicks through (`WS_EX_TRANSPARENT`) and does not appear in Alt+Tab (`WS_EX_TOOLWINDOW`). It does not show above a game in exclusive fullscreen.
