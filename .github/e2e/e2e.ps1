@@ -83,11 +83,13 @@ function ClickOn($name) {
   $el = Find $name
   if (-not $el) { Write-Host "      (no element named '$name')"; return $false }
   # Past the window's edge, it is scrolled to with the wheel, as by hand.
-  # 40 px leave out the title bar.
+  # 40 px leave out the title bar. The window can open partly behind the
+  # taskbar, where a click would open Search instead.
+  $screenBottom = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea.Bottom
   for ($i = 0; $i -lt 15; $i++) {
     $w = WindowRect
     $b = $el.Current.BoundingRectangle
-    if ($b.Bottom -gt $w.B) { $notch = -120 } elseif ($b.Top -lt $w.T + 40) { $notch = 120 } else { break }
+    if ($b.Bottom -gt [Math]::Min($w.B, $screenBottom)) { $notch = -120 } elseif ($b.Top -lt $w.T + 40) { $notch = 120 } else { break }
     [U]::SetCursorPos([int](($w.L + $w.R) / 2), [int](($w.T + $w.B) / 2)) | Out-Null
     [U]::Wheel($notch)
     Start-Sleep -Milliseconds 300
