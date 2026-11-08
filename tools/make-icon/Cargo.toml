@@ -1,0 +1,11 @@
+[package]
+name = "make-icon"
+description = "Generates crates/app/res/pinwheel.ico"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+tiny-skia = "0.12.0"
