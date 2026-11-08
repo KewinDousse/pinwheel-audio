@@ -74,9 +74,25 @@ function Find($name) {
   $window.FindFirst([System.Windows.Automation.TreeScope]::Descendants,
     (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, $name)))
 }
+function WindowRect {
+  $r = New-Object U+RECT
+  [U]::GetWindowRect([U]::FindWindow([NullString]::Value, $title), [ref]$r) | Out-Null
+  $r
+}
 function ClickOn($name) {
   $el = Find $name
   if (-not $el) { Write-Host "      (no element named '$name')"; return $false }
+  # Past the window's edge, it is scrolled to with the wheel, as by hand.
+  # 40 px leave out the title bar.
+  for ($i = 0; $i -lt 15; $i++) {
+    $w = WindowRect
+    $b = $el.Current.BoundingRectangle
+    if ($b.Bottom -gt $w.B) { $notch = -120 } elseif ($b.Top -lt $w.T + 40) { $notch = 120 } else { break }
+    [U]::SetCursorPos([int](($w.L + $w.R) / 2), [int](($w.T + $w.B) / 2)) | Out-Null
+    [U]::Wheel($notch)
+    Start-Sleep -Milliseconds 300
+    $el = Find $name
+  }
   $r = $el.Current.BoundingRectangle
   $x = [int]($r.X + $r.Width / 2); $y = [int]($r.Y + $r.Height / 2)
   Write-Host "      click '$name' at $x,$y"
@@ -124,10 +140,8 @@ foreach ($card in $cards.Keys) {
   if ($previous) { Check "'$card' closes the card open before" (-not (Find $previous)) }
   $previous = $cards[$card]
 }
-$r = New-Object U+RECT
-[U]::GetWindowRect([U]::FindWindow([NullString]::Value, $title), [ref]$r) | Out-Null
 $button = Find 'Open folder'
-$bottom = if ($button) { $r.B - $button.Current.BoundingRectangle.Bottom } else { -1 }
+$bottom = if ($button) { (WindowRect).B - $button.Current.BoundingRectangle.Bottom } else { -1 }
 Check 'the open card scrolls into view' ($bottom -gt 0) "button bottom $bottom px from the window's"
 ClickOn 'General' | Out-Null
 
