@@ -41,7 +41,6 @@ pub fn run() {
         return;
     };
     let _ = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };
-    let _probe = keys::probe_hook();
 
     let app = SettingsApp::new();
     let title = app.texts().settings_title;

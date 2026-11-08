@@ -101,6 +101,14 @@ if ($again) { ClickElement $again }
 Start-Sleep 17
 Shot 'after-timeout'
 
+# The saved shortcut, pressed in another window.
+[U]::Click(900, 600)
+Start-Sleep 1
+[U]::Key(0x11, $false); [U]::Key(0x12, $false); [U]::Key(0x31, $false)
+Start-Sleep -Milliseconds 100
+[U]::Key(0x31, $true); [U]::Key(0x12, $true); [U]::Key(0x11, $true)
+Start-Sleep 1
+
 # Win held long enough to repeat, as a physical key does, with wheel notches in the middle.
 [U]::Click(900, 600)
 Start-Sleep 1

@@ -49,6 +49,12 @@ impl Hotkeys {
         (self.refused.len() != before).then_some(status)
     }
 
+    /// Unregisters every shortcut until the next [`Self::register_all`].
+    pub fn suspend(&mut self, hwnd: HWND) {
+        self.unregister_all(hwnd);
+        self.refused.clear();
+    }
+
     pub fn has_refused(&self) -> bool {
         !self.refused.is_empty()
     }
