@@ -3,6 +3,9 @@
 # nothing here needs one. Screenshots and the log land in e2e-out/.
 param([Parameter(Mandatory)][string]$Exe)
 
+# It overwrites the Pinwheel settings and switches Windows to the dark theme.
+if (-not $env:CI) { throw 'e2e.ps1 changes the settings of this session: run it on a CI runner only.' }
+
 $ErrorActionPreference = 'Continue'
 $out = Join-Path $PWD 'e2e-out'
 New-Item -ItemType Directory -Force $out | Out-Null
@@ -81,6 +84,11 @@ function ClickOn($name) {
   Start-Sleep -Milliseconds 700
   $true
 }
+function ClickAway($when) {
+  [U]::Click(10, 10)
+  Start-Sleep 1
+  Check "another window has the focus $when" ([U]::ForegroundProcess() -ne 'pinwheel')
+}
 function Saved { Get-Content $settingsFile -Raw | ConvertFrom-Json }
 $log = Join-Path $env:LOCALAPPDATA 'Pinwheel\logs\pinwheel.log'
 function LogHas($text) { (Test-Path $log) -and (Select-String -Path $log -SimpleMatch $text -Quiet) }
@@ -102,8 +110,18 @@ Start-Process $Exe -ArgumentList '--settings'
 Start-Sleep 8
 Check 'settings window opens' ([U]::FindWindow([NullString]::Value, $title) -ne [IntPtr]::Zero)
 Shot 'closed'
-foreach ($card in '+  Add an output', '+ wheel changes the volume', 'General') {
+# What each card shows only when open. The runner has no audio device.
+$cards = [ordered]@{
+  '+  Add an output'           = 'No output connected.'
+  '+ wheel changes the volume' = 'Step per notch'
+  'General'                    = 'Open folder'
+}
+$previous = $null
+foreach ($card in $cards.Keys) {
   if (ClickOn $card) { Shot ("open-" + ($card -replace '[^a-z]', '')) }
+  Check "'$card' opens" ([bool](Find $cards[$card]))
+  if ($previous) { Check "'$card' closes the card open before" (-not (Find $previous)) }
+  $previous = $cards[$card]
 }
 ClickOn 'General' | Out-Null
 
@@ -125,15 +143,23 @@ Check 'Escape cancels the capture' (LogHas 'shortcut capture ended: Cancelled')
 Check 'shortcut kept after Escape' (((Saved).outputs[0].hotkey.key) -eq 0x31)
 
 # The saved shortcut works from another window.
-[U]::Click(10, 10)
-Start-Sleep 1
+ClickAway 'before the shortcut'
 Press 0x11, 0x12, 0x31
 Start-Sleep 1
 Check 'saved shortcut fires' (LogHas 'shortcut pressed for "Test output"')
 
-# Win held long enough to repeat, as a physical key does, with wheel notches.
-[U]::Click(10, 10)
+# Win alone opens Start, so that Start staying closed below means something.
+$startMenu = 'StartMenuExperienceHost|SearchHost|SearchApp'
+ClickAway 'before Win alone'
+Press 0x5B
+Start-Sleep 2
+$foreground = [U]::ForegroundProcess()
+Check 'Win alone opens Start' ($foreground -match $startMenu) $foreground
+Press 0x1B
 Start-Sleep 1
+
+# Win held long enough to repeat, as a physical key does, with wheel notches.
+ClickAway 'before Win + wheel'
 [U]::Key(0x5B, $false)
 for ($i = 0; $i -lt 10; $i++) { Start-Sleep -Milliseconds 33; [U]::Key(0x5B, $false) }
 [U]::Wheel(120); Start-Sleep -Milliseconds 100; [U]::Wheel(120)
@@ -141,8 +167,8 @@ for ($i = 0; $i -lt 15; $i++) { Start-Sleep -Milliseconds 33; [U]::Key(0x5B, $fa
 [U]::Key(0x5B, $true)
 Start-Sleep 2
 $foreground = [U]::ForegroundProcess()
-Check 'Start stays closed after Win + wheel' ($foreground -notmatch 'StartMenuExperienceHost|SearchHost|SearchApp') $foreground
-if ($foreground -match 'StartMenuExperienceHost|SearchHost|SearchApp') { Press 0x1B }
+Check 'Start stays closed after Win + wheel' ($foreground -notmatch $startMenu) $foreground
+if ($foreground -match $startMenu) { Press 0x1B }
 
 # The same window in the dark theme.
 Get-Process pinwheel | Where-Object { $_.MainWindowTitle -eq $title } | Stop-Process

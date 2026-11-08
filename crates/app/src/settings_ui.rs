@@ -175,6 +175,13 @@ impl SettingsApp {
     fn start_capture(&mut self, index: usize, ctx: &egui::Context) {
         // Dropping a previous capture stops it first.
         self.capture = None;
+        // egui also gets the keys: Space or Enter, typed as the shortcut,
+        // would press the focused button.
+        ctx.memory_mut(|m| {
+            if let Some(id) = m.focused() {
+                m.surrender_focus(id);
+            }
+        });
         let ctx = ctx.clone();
         match Capture::start(move || ctx.request_repaint()) {
             Ok(capture) => {
@@ -279,7 +286,8 @@ impl SettingsApp {
         let palette = self.themes.palette(ui);
         if let Some(error) = &self.error {
             theme::warning_banner(ui, palette, |ui| {
-                ui.label(RichText::new(error).color(palette.error));
+                // Selectable for the backup path a corrupt file gives.
+                ui.add(egui::Label::new(RichText::new(error).color(palette.error)).selectable(true));
             });
         }
         if !self.main_running {
@@ -320,6 +328,7 @@ impl SettingsApp {
                         ui,
                         palette,
                         open || captured.is_some(),
+                        &output.name,
                         |ui| {
                             ui.vertical(|ui| {
                                 let name = RichText::new(&output.name);
@@ -340,9 +349,7 @@ impl SettingsApp {
                         },
                         |ui| {
                             if open || captured.is_some() {
-                                return theme::remove_button(ui, palette, t.remove)
-                                    .clicked()
-                                    .then_some(OutputAction::Remove);
+                                return None;
                             }
                             match &output.hotkey {
                                 Some(hotkey) => {
@@ -376,6 +383,13 @@ impl SettingsApp {
                         theme::fold_row(ui, palette, t.communications, None, |ui| {
                             switch(ui, palette, &mut output.communications, t.communications, t);
                         });
+                        // At the bottom, away from the header: a double click
+                        // that opens the card cannot land on it.
+                        let remove =
+                            theme::fold_body(ui, palette, |ui| theme::remove_button(ui, palette, t.remove).clicked());
+                        if remove {
+                            action = Some(OutputAction::Remove);
+                        }
                     }
                     if let Some(action) = action {
                         event = Some((index, action));
@@ -412,6 +426,7 @@ impl SettingsApp {
             .iter()
             .filter(|d| d.active && !self.settings.outputs.iter().any(|o| o.id == d.id))
             .collect();
+        let any_connected = self.devices.iter().any(|d| d.active);
         let mut toggled = false;
         let mut added = None;
         ui.add_enabled_ui(self.capture.is_none(), |ui| {
@@ -420,6 +435,7 @@ impl SettingsApp {
                     ui,
                     palette,
                     open,
+                    t.add_output,
                     |ui| {
                         ui.label(RichText::new(format!("+  {}", t.add_output)).color(palette.accent));
                     },
@@ -429,7 +445,12 @@ impl SettingsApp {
                     return;
                 }
                 if available.is_empty() {
-                    theme::fold_body(ui, palette, |ui| ui.label(theme::help(palette, t.nothing_to_add)));
+                    let message = if any_connected {
+                        t.nothing_to_add
+                    } else {
+                        t.no_output_connected
+                    };
+                    theme::fold_body(ui, palette, |ui| ui.label(theme::help(palette, message)));
                 }
                 for device in &available {
                     theme::fold_row(ui, palette, &device.name, None, |ui| {
@@ -468,6 +489,7 @@ impl SettingsApp {
                     ui,
                     palette,
                     open,
+                    &format!("Win {}", t.wheel_heading),
                     |ui| {
                         ui.vertical(|ui| {
                             ui.horizontal(|ui| {
@@ -520,12 +542,13 @@ impl SettingsApp {
         let mut startup_changed = false;
         ui.add_enabled_ui(self.capture.is_none(), |ui| {
             theme::fold_card(ui, palette, |ui| {
-                let language_name = language.map_or(t.windows_language, Lang::native_name);
+                let language_name = language.map_or(t.windows_language_summary, Lang::native_name);
                 let summary = (t.general_summary)(language_name, startup);
                 (toggled, ()) = theme::fold_header(
                     ui,
                     palette,
                     open,
+                    t.general_heading,
                     |ui| {
                         ui.vertical(|ui| {
                             ui.label(t.general_heading);
@@ -538,8 +561,9 @@ impl SettingsApp {
                     return;
                 }
                 theme::fold_row(ui, palette, t.language, None, |ui| {
-                    let choices = [Lang::English, Lang::French].map(|l| (Some(l), l.native_name()));
-                    let choices = [(None, t.language_windows), choices[0], choices[1]];
+                    let choices: Vec<_> = std::iter::once((None, t.language_windows))
+                        .chain(Lang::ALL.iter().map(|&l| (Some(l), l.native_name())))
+                        .collect();
                     theme::segmented(ui, palette, language, &choices);
                 });
                 let help = disabled_by_windows.then(|| theme::note(t.startup_disabled_by_windows, palette.warning));
@@ -602,13 +626,13 @@ impl eframe::App for SettingsApp {
         // A slider being dragged is saved once, when it is released: each
         // save makes the background process register every shortcut again.
         let dragging = ui.ctx().input(|i| i.pointer.any_down());
-        let changed = self.settings != self.saved;
-        if changed && !dragging {
+        let save = self.settings != self.saved && !dragging;
+        if save {
             self.save();
         }
         // This pass drew the state from before the click: without a new
         // pass, the change would only show at the next mouse move.
-        if changed || self.open != open_before || self.capture.is_some() != capturing_before {
+        if save || self.open != open_before || self.capture.is_some() != capturing_before {
             ui.ctx().request_repaint();
         }
     }

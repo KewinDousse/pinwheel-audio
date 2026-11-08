@@ -3,8 +3,8 @@
 
 use crate::accent;
 use eframe::egui::{
-    self, Color32, CornerRadius, FontData, FontDefinitions, FontFamily, FontId, Margin, RichText, Shadow, Stroke,
-    StrokeKind, TextStyle, Theme, Visuals,
+    self, Color32, CornerRadius, FontData, FontDefinitions, FontFamily, FontId, Margin, RichText, Stroke, StrokeKind,
+    TextStyle, Theme, Visuals,
 };
 use eframe::epaint::text::VariationCoords;
 use pinwheel_core::osd::Rgb;
@@ -100,16 +100,6 @@ impl Palette {
         visuals.warn_fg_color = self.warning;
         visuals.error_fg_color = self.error;
         visuals.panel_fill = self.background;
-        visuals.window_fill = self.card;
-        visuals.window_stroke = Stroke::new(1.0, self.control_stroke);
-        visuals.window_corner_radius = CornerRadius::same(8);
-        visuals.menu_corner_radius = CornerRadius::same(8);
-        visuals.popup_shadow = Shadow {
-            offset: [0, 4],
-            blur: 16,
-            spread: 0,
-            color: Color32::from_black_alpha(if dark { 110 } else { 40 }),
-        };
         visuals.extreme_bg_color = self.background;
         visuals.slider_trailing_fill = true;
         visuals
@@ -139,8 +129,6 @@ impl Themes {
         ctx.set_visuals_of(Theme::Dark, self.dark.visuals(true));
         ctx.set_visuals_of(Theme::Light, self.light.visuals(false));
         ctx.all_styles_mut(|style| {
-            // Popups and menus show at once.
-            style.animation_time = 0.0;
             // A click on a card's title opens the card instead of selecting text.
             style.interaction.selectable_labels = false;
             style.text_styles = [
@@ -155,9 +143,7 @@ impl Themes {
             spacing.item_spacing = egui::vec2(8.0, 6.0);
             spacing.button_padding = egui::vec2(11.0, 5.0);
             spacing.interact_size.y = 30.0;
-            spacing.combo_width = 190.0;
             spacing.slider_width = 160.0;
-            spacing.menu_margin = Margin::same(4);
         });
     }
 
@@ -259,7 +245,8 @@ pub fn fold_card<R>(ui: &mut egui::Ui, palette: &Palette, add: impl FnOnce(&mut 
 /// The always visible line of a [`fold_card`]: `title` on the left, laid out
 /// left to right and centred (wrap two lines in `ui.vertical`), `controls`
 /// then a chevron on the right, laid out right to left. A click outside the
-/// controls returns `true`, to open or close it.
+/// controls returns `true`, to open or close it. `name` is what screen
+/// readers announce for it.
 ///
 /// The line has a fixed height so that its click area is known before its
 /// content is laid out: allocated first, it stays under the controls, and it
@@ -268,11 +255,13 @@ pub fn fold_header<R>(
     ui: &mut egui::Ui,
     palette: &Palette,
     open: bool,
+    name: &str,
     title: impl FnOnce(&mut egui::Ui),
     controls: impl FnOnce(&mut egui::Ui) -> R,
 ) -> (bool, R) {
     let size = egui::vec2(ui.available_width(), HEADER_HEIGHT);
     let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::DisclosureTriangle, ui.is_enabled(), name));
     if response.hovered() && ui.is_enabled() {
         let bottom = if open { 0 } else { CARD_RADIUS };
         let radius = CornerRadius {
@@ -294,6 +283,7 @@ pub fn fold_header<R>(
     let controls = egui::containers::Sides::new()
         .height(inner.height())
         .shrink_left()
+        .truncate()
         .show(&mut content, title, |ui| {
             chevron(ui, palette, open);
             controls(ui)

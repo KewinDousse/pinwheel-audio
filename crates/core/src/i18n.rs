@@ -68,6 +68,7 @@ pub struct Texts {
     pub add_output: &'static str,
     pub add: &'static str,
     pub nothing_to_add: &'static str,
+    pub no_output_connected: &'static str,
 
     pub shortcut: &'static str,
     pub set_key: &'static str,
@@ -103,7 +104,7 @@ pub struct Texts {
 
     pub general_heading: &'static str,
     pub general_summary: fn(language: &str, starts_at_sign_in: bool) -> String,
-    pub windows_language: &'static str,
+    pub windows_language_summary: &'static str,
     pub startup_checkbox: &'static str,
     pub startup_failed: fn(error: &str) -> String,
     pub startup_disabled_by_windows: &'static str,
@@ -144,6 +145,7 @@ pub const ENGLISH: Texts = Texts {
     add_output: "Add an output",
     add: "Add",
     nothing_to_add: "Every connected output is already in the list.",
+    no_output_connected: "No output connected.",
 
     shortcut: "Shortcut",
     set_key: "Set a key",
@@ -185,7 +187,7 @@ pub const ENGLISH: Texts = Texts {
         };
         format!("{language} · {startup}")
     },
-    windows_language: "Windows language",
+    windows_language_summary: "Windows language",
     startup_checkbox: "Start Pinwheel when I sign in",
     startup_failed: |error| format!("Could not change the startup entry: {error}"),
     startup_disabled_by_windows: "Turned off in the Windows startup apps. Turning it on here turns it back on.",
@@ -226,6 +228,7 @@ pub const FRENCH: Texts = Texts {
     add_output: "Ajouter une sortie",
     add: "Ajouter",
     nothing_to_add: "Toutes les sorties connectées sont déjà dans la liste.",
+    no_output_connected: "Aucune sortie connectée.",
 
     shortcut: "Raccourci",
     set_key: "Définir une touche",
@@ -267,7 +270,7 @@ pub const FRENCH: Texts = Texts {
         };
         format!("{language} · {startup}")
     },
-    windows_language: "Langue de Windows",
+    windows_language_summary: "Langue de Windows",
     startup_checkbox: "Lancer Pinwheel à l'ouverture de session",
     startup_failed: |error| format!("Modification du démarrage impossible : {error}"),
     startup_disabled_by_windows: "Désactivé dans les applications de démarrage de Windows. L'activer ici le réactive.",

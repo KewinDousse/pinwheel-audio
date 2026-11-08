@@ -55,7 +55,7 @@ When the settings window does not open at startup (every start but the first), t
 
 ## Settings window look
 
-`crates/app/src/settings_theme.rs` follows the Windows 11 Settings app: Segoe UI Variable (Segoe UI before Windows 11) read from the Windows fonts, controls on the right, on/off switches, the shortcut's keys drawn as keycaps, and the accent colour of Windows (`AccentLight2` in the dark theme, `AccentDark1` in the light one). Both themes are set, and egui follows the one of Windows. Animations are off, so menus show at once.
+`crates/app/src/settings_theme.rs` follows the Windows 11 Settings app: Segoe UI Variable (Segoe UI before Windows 11) read from the Windows fonts, controls on the right, on/off switches, the shortcut's keys drawn as keycaps, and the accent colour of Windows (`AccentLight2` in the dark theme, `AccentDark1` in the light one). Both themes are set, and egui follows the one of Windows.
 
 ## Settings window layout
 
@@ -63,7 +63,7 @@ The window shows little at once, so that it reads at a glance:
 
 - One card per output, then "Add an output", then a "Win + wheel" card (step, display style and position) and a "General" card (language, startup, logs).
 - Each card folds. Closed, it shows what matters day to day: an output's name, its state, whether it is the default output of Windows (`Audio::default_output_id`, read every second) and its keys; the other cards a one-line summary of their values. A click on the card opens it; one card is open at a time.
-- The rare actions (change or clear a shortcut, the calls option, remove the output) are inside the open card.
+- The rare actions (change or clear a shortcut, the calls option, remove the output) are inside the open card. Remove is at its bottom, away from the header, so that a double click opening the card cannot remove the output.
 - A shortcut's error or warning shows on its card, open or closed, and only when there is one.
 - During a capture, the box waiting for keys takes the place of the shortcut and the other cards are disabled.
 
