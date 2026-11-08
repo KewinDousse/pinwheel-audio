@@ -4,7 +4,7 @@ What the automated tests do not cover. The log (`%LOCALAPPDATA%\Pinwheel\logs\pi
 
 ## Startup
 
-- [ ] First run: the icon appears, the settings window opens, and Start has a Pinwheel entry.
+- [ ] First run: the icon appears and the settings window opens.
 - [ ] Run the executable again: a single Pinwheel runs, the settings open.
 - [ ] Startup ticked, then sign out and in again: Pinwheel runs.
 - [ ] Turn Pinwheel off in Windows Settings > Apps > Startup: the settings window says so.
@@ -30,8 +30,8 @@ What the automated tests do not cover. The log (`%LOCALAPPDATA%\Pinwheel\logs\pi
 
 ## Display
 
-- [ ] Each style and each position, with the "Preview" button.
-- [ ] In the settings, drag the "Step per wheel notch" slider (Volume section) back and forth: the shortcuts keep working afterwards, and the log shows no burst of saves.
+- [ ] Each style and each position, with the "Try the display" button.
+- [ ] In the settings, drag the "Step per notch" slider ("Win + wheel" card) back and forth: the shortcuts keep working afterwards, and the log shows no burst of saves.
 - [ ] The display stays 1 s then fades out, and a new notch restarts the delay.
 - [ ] It does not take the focus: typing in the active window keeps working.
 - [ ] Two monitors with different scaling: it shows sharp and at the right size on the cursor's monitor.
@@ -40,14 +40,16 @@ What the automated tests do not cover. The log (`%LOCALAPPDATA%\Pinwheel\logs\pi
 
 ## Settings window
 
-- [ ] Windows in dark mode, then in light mode (Settings > Personalization > Colors): the window follows, text stays readable, switches and slider take the accent colour.
-- [ ] Open each list (language, style, position, add an output): it shows at once, without a fade.
+- [ ] Windows in dark mode, then in light mode (Settings > Personalization > Colors): the window follows, text stays readable, switches, slider and selected choices take the accent colour.
+- [ ] Open each card by clicking its title: it opens at once, and the card open before closes.
+- [ ] Closed, the "Win + wheel" and "General" cards show their current values; change one and the summary follows.
+- [ ] The output Windows uses right now is marked "Default output"; switch with a shortcut and the mark follows within a second.
 - [ ] Make the window narrow: titles and controls do not overlap.
 
 ## Output shortcuts
 
 - [ ] Add two outputs with Ctrl+Alt+1 and Ctrl+Alt+2: each shortcut switches the output and shows it.
-- [ ] Unplug or turn off an output (Bluetooth headset): it stays in the list, marked "disconnected", and its shortcut shows "disconnected".
+- [ ] Unplug or turn off an output (Bluetooth headset): it stays in the list, marked "Disconnected", and its shortcut still shows.
 - [ ] Plug it back: the shortcut works again.
 - [ ] Same shortcut on two outputs: the window says so.
 - [ ] Shortcut already taken by another app: the window says so within a second.
@@ -61,7 +63,6 @@ What the automated tests do not cover. The log (`%LOCALAPPDATA%\Pinwheel\logs\pi
 - [ ] Set right Ctrl + left Shift + a letter, releasing the modifiers in any order: the combination is complete.
 - [ ] Set a single key (a letter, then F13): the warning shows for the letter, not for F13.
 - [ ] A media key (play/pause) and a key sent by macro software: both accepted.
-- [ ] Escape alone: the capture is cancelled, the previous shortcut stays.
 - [ ] Type nothing for 15 s: the capture stops.
 - [ ] During the capture, click another window and type: the capture stops and the keys reach that window.
 - [ ] Close and reopen the settings: the captured shortcut is saved and works.

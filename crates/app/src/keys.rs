@@ -35,7 +35,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 use windows::core::w;
 
-const TIMEOUT_MS: u32 = 15_000;
+pub const TIMEOUT_MS: u32 = 15_000;
 /// Scan code of the right Shift, which Raw Input reports as plain `VK_SHIFT`.
 const SCAN_RIGHT_SHIFT: u16 = 0x36;
 
@@ -83,6 +83,7 @@ impl Capture {
     pub fn start(on_result: impl Fn() + Send + 'static) -> std::io::Result<Self> {
         let (sender, receiver) = mpsc::channel();
         let thread = MessageThread::spawn("shortcut-capture", move || run(sender, Box::new(on_result)))?;
+        log::info!("shortcut capture started");
         ipc::notify_main(WM_CAPTURE_BEGIN);
         Ok(Self {
             receiver,

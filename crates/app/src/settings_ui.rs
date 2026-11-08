@@ -46,7 +46,7 @@ pub fn run() {
     let title = app.texts().settings_title;
     let mut viewport = egui::ViewportBuilder::default()
         .with_title(title)
-        .with_inner_size([640.0, 760.0])
+        .with_inner_size([640.0, 600.0])
         .with_min_inner_size([520.0, 420.0]);
     if let Some(icon) = window_icon() {
         viewport = viewport.with_icon(icon);
@@ -111,6 +111,12 @@ struct SettingsApp {
     last_refresh: Option<Instant>,
     error: Option<String>,
     capture: Option<ActiveCapture>,
+    /// ID of the Windows default output.
+    default_id: Option<String>,
+    open: Option<Fold>,
+    /// The card opened by the pass before: its rows are drawn now, so it
+    /// can be scrolled into view.
+    reveal: bool,
     /// Language of the window title, updated when the setting changes.
     title_lang: Lang,
     themes: Themes,
@@ -120,6 +126,15 @@ struct SettingsApp {
 struct ActiveCapture {
     index: usize,
     capture: Capture,
+    started: Instant,
+}
+
+impl ActiveCapture {
+    /// The share of the capture's time left, from 1 to 0.
+    fn remaining(&self) -> f32 {
+        let timeout = Duration::from_millis(u64::from(keys::TIMEOUT_MS));
+        1.0 - self.started.elapsed().as_secs_f32() / timeout.as_secs_f32()
+    }
 }
 
 impl SettingsApp {
@@ -145,6 +160,9 @@ impl SettingsApp {
             last_refresh: None,
             error,
             capture: None,
+            default_id: None,
+            open: None,
+            reveal: false,
             title_lang: lang,
             themes: Themes::new(),
         }
@@ -161,9 +179,22 @@ impl SettingsApp {
     fn start_capture(&mut self, index: usize, ctx: &egui::Context) {
         // Dropping a previous capture stops it first.
         self.capture = None;
+        // egui also gets the keys: Space or Enter, typed as the shortcut,
+        // would press the focused button.
+        ctx.memory_mut(|m| {
+            if let Some(id) = m.focused() {
+                m.surrender_focus(id);
+            }
+        });
         let ctx = ctx.clone();
         match Capture::start(move || ctx.request_repaint()) {
-            Ok(capture) => self.capture = Some(ActiveCapture { index, capture }),
+            Ok(capture) => {
+                self.capture = Some(ActiveCapture {
+                    index,
+                    capture,
+                    started: Instant::now(),
+                })
+            }
             Err(e) => {
                 log::error!("starting the shortcut capture failed: {e}");
                 self.error = Some(self.texts().capture_failed.into());
@@ -199,6 +230,7 @@ impl SettingsApp {
             self.audio = Audio::new().inspect_err(|e| log::warn!("audio unavailable: {e}")).ok();
         }
         if let Some(audio) = &self.audio {
+            self.default_id = audio.default_output_id().ok();
             match audio.outputs() {
                 Ok(devices) => self.devices = devices,
                 Err(e) => {
@@ -245,12 +277,21 @@ impl SettingsApp {
         }
     }
 
+    fn toggle_fold(&mut self, fold: Fold) {
+        self.open = if self.open.as_ref() == Some(&fold) {
+            None
+        } else {
+            Some(fold)
+        };
+    }
+
     fn banners(&mut self, ui: &mut egui::Ui) {
         let t = self.texts();
         let palette = self.themes.palette(ui);
         if let Some(error) = &self.error {
             theme::warning_banner(ui, palette, |ui| {
-                ui.label(RichText::new(error).color(palette.error));
+                // Selectable for the backup path a corrupt file gives.
+                ui.add(egui::Label::new(RichText::new(error).color(palette.error)).selectable(true));
             });
         }
         if !self.main_running {
@@ -264,193 +305,293 @@ impl SettingsApp {
                 });
             });
         }
+        if self.audio.is_none() {
+            theme::warning_banner(ui, palette, |ui| {
+                ui.label(RichText::new(t.audio_unavailable).color(palette.warning));
+            });
+        }
     }
 
     fn outputs_section(&mut self, ui: &mut egui::Ui) {
         let (lang, t) = (self.lang(), self.texts());
         let palette = self.themes.palette(ui);
-        theme::section_title(ui, t.outputs_heading);
-        ui.label(theme::help(palette, t.outputs_help));
-        ui.add_space(4.0);
+        theme::heading(ui, t.outputs_heading);
 
-        let mut remove = None;
-        let mut capture_request = None;
-        let capturing = self.capture.as_ref().map(|c| c.index);
+        let capturing = self.capture.as_ref().map(|c| (c.index, c.remaining()));
+        let mut event = None;
         for index in 0..self.settings.outputs.len() {
             let duplicate_of = duplicate_hotkey(&self.settings.outputs, index).map(|o| o.name.clone());
             let refused = self.status.hotkey_errors.contains_key(&self.settings.outputs[index].id);
-            let (state, connected) = device_state(&self.settings.outputs[index], &self.devices, t);
+            let state = device_state(&self.settings.outputs[index], &self.devices, self.default_id.as_deref());
             let output = &mut self.settings.outputs[index];
-            theme::card(ui, palette, |ui| {
-                let state_color = if connected { palette.success } else { palette.secondary };
-                theme::labelled(
-                    ui,
-                    theme::strong(&output.name),
-                    Some(theme::note(state, state_color)),
-                    |ui| {
-                        if ui.button(t.remove).clicked() {
-                            remove = Some(index);
+            let open = self.open.as_ref() == Some(&Fold::Output(output.id.clone()));
+            let captured = capturing.filter(|(i, _)| *i == index).map(|(_, remaining)| remaining);
+            let reveal = self.reveal && open;
+            ui.add_enabled_ui(capturing.is_none() || captured.is_some(), |ui| {
+                theme::fold_card(ui, palette, reveal, |ui| {
+                    let (clicked, action) = theme::fold_header(
+                        ui,
+                        palette,
+                        open || captured.is_some(),
+                        &output.name,
+                        |ui| {
+                            ui.vertical(|ui| {
+                                let name = RichText::new(&output.name);
+                                ui.label(if state.connected() {
+                                    name
+                                } else {
+                                    name.color(palette.secondary)
+                                });
+                                ui.horizontal(|ui| {
+                                    ui.spacing_mut().item_spacing.x = 0.0;
+                                    ui.label(theme::help(palette, state.label(t)));
+                                    if state.is_default() {
+                                        ui.label(theme::help(palette, " · "));
+                                        ui.label(theme::accented(palette, t.default_output));
+                                    }
+                                });
+                            });
+                        },
+                        |ui| {
+                            if open || captured.is_some() {
+                                return None;
+                            }
+                            match &output.hotkey {
+                                Some(hotkey) => {
+                                    keycaps(ui, palette, hotkey, lang);
+                                    None
+                                }
+                                None => ui.button(t.set_key).clicked().then_some(OutputAction::Capture),
+                            }
+                        },
+                    );
+                    let mut action = action.or((clicked && captured.is_none()).then_some(OutputAction::Toggle));
+                    if let Some(remaining) = captured {
+                        if capture_box(ui, palette, t, remaining) {
+                            action = Some(OutputAction::StopCapture);
                         }
-                    },
-                );
-                theme::divider(ui, palette);
-                let action = theme::labelled(ui, t.shortcut, None, |ui| {
-                    hotkey_controls(ui, palette, output.hotkey.as_ref(), capturing == Some(index), lang)
-                });
-                match action {
-                    HotkeyAction::Capture => capture_request = Some(Some(index)),
-                    HotkeyAction::StopCapture => capture_request = Some(None),
-                    HotkeyAction::Clear => output.hotkey = None,
-                    HotkeyAction::None => {}
-                }
-                hotkey_messages(
-                    ui,
-                    palette,
-                    output.hotkey.as_ref(),
-                    duplicate_of.as_deref(),
-                    refused,
-                    lang,
-                );
-                theme::divider(ui, palette);
-                theme::labelled(ui, t.communications, None, |ui| {
-                    theme::toggle(ui, palette, &mut output.communications, t.communications);
+                    } else if open {
+                        let controls = theme::fold_row(ui, palette, t.shortcut, None, |ui| {
+                            hotkey_controls(ui, palette, output.hotkey.as_ref(), lang)
+                        });
+                        action = action.or(controls);
+                    }
+                    hotkey_messages(
+                        ui,
+                        palette,
+                        output.hotkey.as_ref(),
+                        duplicate_of.as_deref(),
+                        refused,
+                        lang,
+                    );
+                    if open && captured.is_none() {
+                        theme::fold_row(ui, palette, t.communications, None, |ui| {
+                            switch(ui, palette, &mut output.communications, t.communications, t);
+                        });
+                        // At the bottom, away from the header: a double click
+                        // that opens the card cannot land on it.
+                        let remove =
+                            theme::fold_body(ui, palette, |ui| theme::remove_button(ui, palette, t.remove).clicked());
+                        if remove {
+                            action = Some(OutputAction::Remove);
+                        }
+                    }
+                    if let Some(action) = action {
+                        event = Some((index, action));
+                    }
                 });
             });
         }
-        match capture_request {
-            Some(Some(index)) => self.start_capture(index, ui.ctx()),
-            Some(None) => self.capture = None,
-            None => {}
-        }
-        if let Some(index) = remove {
-            // Indexes shift: a capture in progress would land on another output.
-            self.capture = None;
-            self.settings.outputs.remove(index);
-        }
 
-        if self.audio.is_none() {
-            ui.label(theme::note(t.audio_unavailable, self.themes.palette(ui).warning));
+        let Some((index, action)) = event else { return };
+        let fold = Fold::Output(self.settings.outputs[index].id.clone());
+        match action {
+            OutputAction::Toggle => self.toggle_fold(fold),
+            OutputAction::Capture => {
+                self.open = Some(fold);
+                self.start_capture(index, ui.ctx());
+            }
+            OutputAction::StopCapture => self.capture = None,
+            OutputAction::Clear => self.settings.outputs[index].hotkey = None,
+            OutputAction::Remove => {
+                // Indexes shift: a capture in progress would land on another output.
+                self.capture = None;
+                self.open = None;
+                self.settings.outputs.remove(index);
+            }
         }
-        let available: Vec<DeviceInfo> = self
+    }
+
+    fn add_section(&mut self, ui: &mut egui::Ui) {
+        let t = self.texts();
+        let palette = self.themes.palette(ui);
+        let open = self.open == Some(Fold::Add);
+        let available: Vec<&DeviceInfo> = self
             .devices
             .iter()
             .filter(|d| d.active && !self.settings.outputs.iter().any(|o| o.id == d.id))
-            .cloned()
             .collect();
+        let any_connected = self.devices.iter().any(|d| d.active);
+        let mut toggled = false;
         let mut added = None;
-        ui.add_space(2.0);
-        ui.add_enabled_ui(!available.is_empty(), |ui| {
-            egui::ComboBox::from_id_salt("add-output")
-                .selected_text(t.add_output)
-                .width(320.0)
-                .show_ui(ui, |ui| {
-                    for device in &available {
-                        if ui.selectable_label(false, &device.name).clicked() {
-                            added = Some(device.clone());
+        ui.add_enabled_ui(self.capture.is_none(), |ui| {
+            theme::fold_card(ui, palette, self.reveal && open, |ui| {
+                (toggled, ()) = theme::fold_header(
+                    ui,
+                    palette,
+                    open,
+                    t.add_output,
+                    |ui| {
+                        ui.label(RichText::new(format!("+  {}", t.add_output)).color(palette.accent));
+                    },
+                    |_| {},
+                );
+                if !open {
+                    return;
+                }
+                if available.is_empty() {
+                    let message = if any_connected {
+                        t.nothing_to_add
+                    } else {
+                        t.no_output_connected
+                    };
+                    theme::fold_body(ui, palette, |ui| ui.label(theme::help(palette, message)));
+                }
+                for device in &available {
+                    theme::fold_row(ui, palette, &device.name, None, |ui| {
+                        if ui.button(t.add).clicked() {
+                            added = Some((*device).clone());
                         }
-                    }
-                });
+                    });
+                }
+            });
         });
         if let Some(device) = added {
+            self.open = Some(Fold::Output(device.id.clone()));
             self.settings.outputs.push(OutputBinding {
                 id: device.id,
                 name: device.name,
                 hotkey: None,
                 communications: false,
             });
+        } else if toggled {
+            self.toggle_fold(Fold::Add);
         }
     }
 
-    fn volume_section(&mut self, ui: &mut egui::Ui) {
-        let t = self.texts();
-        let palette = self.themes.palette(ui);
-        theme::section_title(ui, t.volume_heading);
-        let step = &mut self.settings.volume_step;
-        theme::setting_row(
-            ui,
-            palette,
-            t.volume_step,
-            Some(theme::help(palette, t.volume_help)),
-            |ui| {
-                ui.label((t.percent)(i32::from(*step)));
-                ui.add(egui::Slider::new(step, STEP_RANGE).show_value(false));
-            },
-        );
-    }
-
-    fn display_section(&mut self, ui: &mut egui::Ui) {
+    fn wheel_section(&mut self, ui: &mut egui::Ui) {
         let (lang, t) = (self.lang(), self.texts());
         let palette = self.themes.palette(ui);
-        theme::section_title(ui, t.display_heading);
-        let osd = &mut self.settings.osd;
-        theme::setting_row(ui, palette, t.style, None, |ui| {
-            egui::ComboBox::from_id_salt("style")
-                .selected_text(osd.style.label(lang))
-                .show_ui(ui, |ui| {
-                    for style in OsdStyle::ALL {
-                        ui.selectable_value(&mut osd.style, style, style.label(lang));
-                    }
-                });
-        });
-        theme::setting_row(ui, palette, t.position, None, |ui| {
-            egui::ComboBox::from_id_salt("position")
-                .selected_text(osd.position.label(lang))
-                .show_ui(ui, |ui| {
-                    for position in OsdPosition::ALL {
-                        ui.selectable_value(&mut osd.position, position, position.label(lang));
-                    }
-                });
-        });
+        let open = self.open == Some(Fold::Wheel);
         let main_running = self.main_running;
-        theme::setting_row(
-            ui,
-            palette,
-            t.preview,
-            Some(theme::help(palette, t.preview_help)),
-            |ui| {
-                if ui.add_enabled(main_running, egui::Button::new(t.show)).clicked() {
-                    ipc::notify_main(WM_PREVIEW_OSD);
+        let step = &mut self.settings.volume_step;
+        let osd = &mut self.settings.osd;
+        let mut toggled = false;
+        ui.add_enabled_ui(self.capture.is_none(), |ui| {
+            theme::fold_card(ui, palette, self.reveal && open, |ui| {
+                let summary = (t.wheel_summary)(i32::from(*step), osd.style.label(lang), osd.position.label(lang));
+                (toggled, ()) = theme::fold_header(
+                    ui,
+                    palette,
+                    open,
+                    &format!("Win {}", t.wheel_heading),
+                    |ui| {
+                        ui.vertical(|ui| {
+                            ui.horizontal(|ui| {
+                                ui.spacing_mut().item_spacing.x = 4.0;
+                                theme::keycap(ui, palette, "Win");
+                                ui.label(t.wheel_heading);
+                            });
+                            ui.label(theme::help(palette, &summary));
+                        });
+                    },
+                    |ui| {
+                        if open && ui.add_enabled(main_running, egui::Button::new(t.try_display)).clicked() {
+                            ipc::notify_main(WM_PREVIEW_OSD);
+                        }
+                    },
+                );
+                if !open {
+                    return;
                 }
-            },
-        );
+                theme::fold_row(ui, palette, t.volume_step, None, |ui| {
+                    ui.label((t.percent)(i32::from(*step)));
+                    ui.add(egui::Slider::new(step, STEP_RANGE).show_value(false));
+                });
+                theme::fold_row(ui, palette, t.style, None, |ui| {
+                    theme::segmented(ui, palette, &mut osd.style, &OsdStyle::ALL.map(|s| (s, s.label(lang))));
+                });
+                theme::fold_row(ui, palette, t.position, None, |ui| {
+                    theme::segmented(
+                        ui,
+                        palette,
+                        &mut osd.position,
+                        &OsdPosition::ALL.map(|p| (p, p.label(lang))),
+                    );
+                });
+            });
+        });
+        if toggled {
+            self.toggle_fold(Fold::Wheel);
+        }
     }
 
     fn general_section(&mut self, ui: &mut egui::Ui) {
         let t = self.texts();
         let palette = self.themes.palette(ui);
-        theme::section_title(ui, t.general_heading);
+        let open = self.open == Some(Fold::General);
+        let disabled_by_windows = self.startup == StartupState::DisabledByWindows;
+        let mut startup = self.startup == StartupState::On;
         let language = &mut self.settings.language;
-        theme::setting_row(ui, palette, t.language, None, |ui| {
-            let selected = language.map_or(t.language_windows, Lang::native_name);
-            egui::ComboBox::from_id_salt("language")
-                .selected_text(selected)
-                .show_ui(ui, |ui| {
-                    ui.selectable_value(language, None, t.language_windows);
-                    for lang in Lang::ALL {
-                        ui.selectable_value(language, Some(lang), lang.native_name());
+        let mut toggled = false;
+        let mut startup_changed = false;
+        ui.add_enabled_ui(self.capture.is_none(), |ui| {
+            theme::fold_card(ui, palette, self.reveal && open, |ui| {
+                let language_name = language.map_or(t.windows_language_summary, Lang::native_name);
+                let summary = (t.general_summary)(language_name, startup);
+                (toggled, ()) = theme::fold_header(
+                    ui,
+                    palette,
+                    open,
+                    t.general_heading,
+                    |ui| {
+                        ui.vertical(|ui| {
+                            ui.label(t.general_heading);
+                            ui.label(theme::help(palette, &summary));
+                        });
+                    },
+                    |_| {},
+                );
+                if !open {
+                    return;
+                }
+                theme::fold_row(ui, palette, t.language, None, |ui| {
+                    let choices: Vec<_> = std::iter::once((None, t.language_windows))
+                        .chain(Lang::ALL.iter().map(|&l| (Some(l), l.native_name())))
+                        .collect();
+                    theme::segmented(ui, palette, language, &choices);
+                });
+                let help = disabled_by_windows.then(|| theme::note(t.startup_disabled_by_windows, palette.warning));
+                startup_changed = theme::fold_row(ui, palette, t.startup_checkbox, help, |ui| {
+                    switch(ui, palette, &mut startup, t.startup_checkbox, t)
+                });
+                theme::fold_row(ui, palette, t.logs, None, |ui| {
+                    if ui.button(t.open_folder).clicked() {
+                        open_folder(&paths::log_dir());
                     }
                 });
+            });
         });
-
-        let disabled_by_windows = self.startup == StartupState::DisabledByWindows;
-        let help = disabled_by_windows.then(|| theme::note(t.startup_disabled_by_windows, palette.warning));
-        let mut enabled = self.startup == StartupState::On;
-        let changed = theme::setting_row(ui, palette, t.startup_checkbox, help, |ui| {
-            theme::toggle(ui, palette, &mut enabled, t.startup_checkbox).changed()
-        });
-        if changed {
-            if let Err(e) = startup::set(enabled) {
+        if startup_changed {
+            if let Err(e) = startup::set(startup) {
                 log::error!("changing the startup entry failed: {e}");
                 self.error = Some((t.startup_failed)(&e.to_string()));
             }
             self.startup = startup::state();
         }
-
-        theme::setting_row(ui, palette, t.logs, None, |ui| {
-            if ui.button(t.open_folder).clicked() {
-                open_folder(&paths::log_dir());
-            }
-        });
+        if toggled {
+            self.toggle_fold(Fold::General);
+        }
     }
 }
 
@@ -459,7 +600,13 @@ impl eframe::App for SettingsApp {
         self.refresh();
         ui.ctx().request_repaint_after(REFRESH_EVERY);
 
+        let open_before = self.open.clone();
+        let capturing_before = self.capture.is_some();
         self.poll_capture();
+        if self.capture.is_some() {
+            // The countdown moves.
+            ui.ctx().request_repaint_after(Duration::from_millis(100));
+        }
         let lang = self.lang();
         if lang != self.title_lang {
             self.title_lang = lang;
@@ -474,8 +621,9 @@ impl eframe::App for SettingsApp {
                     ui.spacing_mut().item_spacing.y = 4.0;
                     self.banners(ui);
                     self.outputs_section(ui);
-                    self.volume_section(ui);
-                    self.display_section(ui);
+                    self.add_section(ui);
+                    ui.add_space(16.0);
+                    self.wheel_section(ui);
                     self.general_section(ui);
                 });
             });
@@ -483,66 +631,130 @@ impl eframe::App for SettingsApp {
         // A slider being dragged is saved once, when it is released: each
         // save makes the background process register every shortcut again.
         let dragging = ui.ctx().input(|i| i.pointer.any_down());
-        if self.settings != self.saved && !dragging {
+        let save = self.settings != self.saved && !dragging;
+        if save {
             self.save();
+        }
+        // This pass drew the state from before the click: without a new
+        // pass, the change would only show at the next mouse move.
+        self.reveal = self.open.is_some() && self.open != open_before;
+        if save || self.open != open_before || self.capture.is_some() != capturing_before {
+            ui.ctx().request_repaint();
         }
     }
 }
 
-/// Label of a saved output's state, and whether it is plugged in.
-fn device_state(output: &OutputBinding, devices: &[DeviceInfo], t: &'static Texts) -> (&'static str, bool) {
-    match resolve(&output.id, &output.name, devices) {
-        Resolution::Ready(_) | Resolution::Moved(_) => (t.connected, true),
-        Resolution::Unavailable => (t.disconnected, false),
-        Resolution::Unknown => (t.not_found, false),
+/// Where a saved output stands, for its card.
+enum DeviceState {
+    /// `default`: it is the Windows default output right now.
+    Connected {
+        default: bool,
+    },
+    Disconnected,
+    NotFound,
+}
+
+impl DeviceState {
+    fn label(&self, t: &'static Texts) -> &'static str {
+        match self {
+            Self::Connected { .. } => t.connected,
+            Self::Disconnected => t.disconnected,
+            Self::NotFound => t.not_found,
+        }
+    }
+
+    fn connected(&self) -> bool {
+        matches!(self, Self::Connected { .. })
+    }
+
+    fn is_default(&self) -> bool {
+        matches!(self, Self::Connected { default: true })
     }
 }
 
-enum HotkeyAction {
-    None,
+fn device_state(output: &OutputBinding, devices: &[DeviceInfo], default_id: Option<&str>) -> DeviceState {
+    match resolve(&output.id, &output.name, devices) {
+        Resolution::Ready(device) | Resolution::Moved(device) => DeviceState::Connected {
+            default: default_id == Some(device.id.as_str()),
+        },
+        Resolution::Unavailable => DeviceState::Disconnected,
+        Resolution::Unknown => DeviceState::NotFound,
+    }
+}
+
+/// The fold open in the window: one at a time.
+#[derive(Clone, PartialEq, Eq)]
+enum Fold {
+    /// The output with this ID.
+    Output(String),
+    Add,
+    Wheel,
+    General,
+}
+
+enum OutputAction {
+    Toggle,
     Capture,
     StopCapture,
     Clear,
+    Remove,
+}
+
+/// The keys of a shortcut, added right to left.
+fn keycaps(ui: &mut egui::Ui, palette: &Palette, hotkey: &Hotkey, lang: Lang) {
+    ui.spacing_mut().item_spacing.x = 4.0;
+    for key in keys::describe(hotkey, lang).iter().rev() {
+        theme::keycap(ui, palette, key);
+    }
 }
 
 /// The shortcut's keys and buttons, added right to left.
-fn hotkey_controls(
-    ui: &mut egui::Ui,
-    palette: &Palette,
-    hotkey: Option<&Hotkey>,
-    capturing: bool,
-    lang: Lang,
-) -> HotkeyAction {
+fn hotkey_controls(ui: &mut egui::Ui, palette: &Palette, hotkey: Option<&Hotkey>, lang: Lang) -> Option<OutputAction> {
     let t = lang.texts();
-    let mut action = HotkeyAction::None;
-    if capturing {
-        if ui.button(t.cancel).clicked() {
-            action = HotkeyAction::StopCapture;
-        }
-        theme::keycap(ui, palette, t.capture_prompt, true);
-        return action;
-    }
+    let mut action = None;
     match hotkey {
         Some(hotkey) => {
             if ui.button(t.clear).clicked() {
-                action = HotkeyAction::Clear;
+                action = Some(OutputAction::Clear);
             }
             if ui.button(t.change).clicked() {
-                action = HotkeyAction::Capture;
+                action = Some(OutputAction::Capture);
             }
-            ui.spacing_mut().item_spacing.x = 4.0;
-            for key in keys::describe(hotkey, lang).iter().rev() {
-                theme::keycap(ui, palette, key, false);
-            }
+            keycaps(ui, palette, hotkey, lang);
         }
         None => {
-            if ui.button(t.choose).clicked() {
-                action = HotkeyAction::Capture;
+            if ui.button(t.set).clicked() {
+                action = Some(OutputAction::Capture);
             }
             ui.label(RichText::new(t.no_shortcut).color(palette.secondary));
         }
     }
     action
+}
+
+/// The box that replaces the shortcut while a capture waits for keys.
+/// Returns `true` when Cancel is clicked.
+fn capture_box(ui: &mut egui::Ui, palette: &Palette, t: &'static Texts, remaining: f32) -> bool {
+    theme::fold_body(ui, palette, |ui| {
+        theme::waiting_frame(ui, palette, |ui| {
+            let cancel = theme::labelled(
+                ui,
+                theme::strong(t.capture_prompt),
+                Some(theme::help(palette, t.capture_cancel_hint)),
+                |ui| ui.button(t.cancel).clicked(),
+            );
+            ui.add_space(6.0);
+            theme::countdown(ui, palette, remaining);
+            cancel
+        })
+    })
+}
+
+/// A switch with its state written next to it, added right to left.
+fn switch(ui: &mut egui::Ui, palette: &Palette, on: &mut bool, label: &str, t: &'static Texts) -> bool {
+    let changed = theme::toggle(ui, palette, on, label).changed();
+    ui.label(if *on { t.on } else { t.off });
+    changed
 }
 
 fn hotkey_messages(
@@ -556,14 +768,14 @@ fn hotkey_messages(
     let Some(hotkey) = hotkey else { return };
     let t = lang.texts();
     if let Err(e) = hotkey.validate() {
-        ui.label(theme::note(e.message(lang), palette.error));
+        theme::fold_message(ui, palette, e.message(lang), palette.error);
     } else if let Some(other) = duplicate_of {
-        ui.label(theme::note(&(t.duplicate_shortcut)(other), palette.error));
+        theme::fold_message(ui, palette, &(t.duplicate_shortcut)(other), palette.error);
     } else if refused {
-        ui.label(theme::note(t.shortcut_refused, palette.error));
+        theme::fold_message(ui, palette, t.shortcut_refused, palette.error);
     }
     for warning in hotkey.warnings() {
-        ui.label(theme::note(warning.message(lang), palette.warning));
+        theme::fold_message(ui, palette, warning.message(lang), palette.warning);
     }
 }
 

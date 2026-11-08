@@ -55,11 +55,21 @@ When the settings window does not open at startup (every start but the first), t
 
 ## Settings window look
 
-`crates/app/src/settings_theme.rs` follows the Windows 11 Settings app: Segoe UI Variable (Segoe UI before Windows 11) read from the Windows fonts, one card per setting with its control on the right, on/off switches, the shortcut's keys drawn as keycaps, and the accent colour of Windows (`AccentLight2` in the dark theme, `AccentDark1` in the light one). Both themes are set, and egui follows the one of Windows. Animations are off, so lists and menus show at once.
+`crates/app/src/settings_theme.rs` follows the Windows 11 Settings app: Segoe UI Variable (Segoe UI before Windows 11) read from the Windows fonts, controls on the right, on/off switches, the shortcut's keys drawn as keycaps, and the accent colour of Windows (`AccentLight2` in the dark theme, `AccentDark1` in the light one). Both themes are set, and egui follows the one of Windows.
+
+## Settings window layout
+
+The window shows little at once, so that it reads at a glance:
+
+- One card per output, then "Add an output", then a "Win + wheel" card (step, display style and position) and a "General" card (language, startup, logs).
+- Each card folds. Closed, it shows what matters day to day: an output's name, its state, whether it is the default output of Windows (`Audio::default_output_id`, read every second) and its keys; the other cards a one-line summary of their values. A click on the card opens it, and scrolls it into view; one card is open at a time.
+- The rare actions (change or clear a shortcut, the calls option, remove the output) are inside the open card. Remove is at its bottom, away from the header, so that a double click opening the card cannot remove the output.
+- A shortcut's error or warning shows on its card, open or closed, and only when there is one.
+- During a capture, the box waiting for keys takes the place of the shortcut and the other cards are disabled.
 
 ## Shortcut capture
 
-In the settings window, "Set…" starts `keys::Capture`, which reads the keyboard through Raw Input (`RIDEV_INPUTSINK`) on a message-only window of a `MessageThread`. Low-level keyboard hooks cannot do it: Windows does not call them, in any process, for the keys it sends to the settings window (seen on Windows 11, reproduced on Windows Server 2025, cause not found). Raw Input sees every key, Win included, but cannot stop one:
+In the settings window, "Set a key", "Set" or "Change" starts `keys::Capture`, which reads the keyboard through Raw Input (`RIDEV_INPUTSINK`) on a message-only window of a `MessageThread`. Low-level keyboard hooks cannot do it: Windows does not call them, in any process, for the keys it sends to the settings window (seen on Windows 11, reproduced on Windows Server 2025, cause not found). Raw Input sees every key, Win included, but cannot stop one:
 
 - the background process suspends its shortcuts while the capture lasts (`WM_CAPTURE_BEGIN`, `WM_CAPTURE_END`), and brings them back by itself after 20 s in case the settings window closes without saying so;
 - a Win combination the shell reserves, such as Win+E, still does what Windows gives it while it is captured.
