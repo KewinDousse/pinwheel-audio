@@ -15,6 +15,8 @@ use std::sync::Arc;
 const SEMIBOLD: &str = "semibold";
 const CARD_RADIUS: u8 = 6;
 const CONTROL_RADIUS: u8 = 4;
+/// Fits two lines of text, or a keycap above a line.
+const HEADER_HEIGHT: f32 = 60.0;
 
 /// Colours of one theme, for what the egui visuals do not cover.
 pub struct Palette {
@@ -258,6 +260,10 @@ pub fn fold_card<R>(ui: &mut egui::Ui, palette: &Palette, add: impl FnOnce(&mut 
 /// left to right and centred (wrap two lines in `ui.vertical`), `controls`
 /// then a chevron on the right, laid out right to left. A click outside the
 /// controls returns `true`, to open or close it.
+///
+/// The line has a fixed height so that its click area is known before its
+/// content is laid out: allocated first, it stays under the controls, and it
+/// follows the card at once when another card opens above it.
 pub fn fold_header<R>(
     ui: &mut egui::Ui,
     palette: &Palette,
@@ -265,39 +271,35 @@ pub fn fold_header<R>(
     title: impl FnOnce(&mut egui::Ui),
     controls: impl FnOnce(&mut egui::Ui) -> R,
 ) -> (bool, R) {
-    let response = ui.scope_builder(egui::UiBuilder::new().sense(egui::Sense::click()), |ui| {
-        let background = ui.response();
-        if background.hovered() && ui.is_enabled() {
-            let bottom = if open { 0 } else { CARD_RADIUS };
-            let radius = CornerRadius {
-                nw: CARD_RADIUS,
-                ne: CARD_RADIUS,
-                sw: bottom,
-                se: bottom,
-            };
-            ui.painter().rect_filled(background.rect, radius, palette.card_hover);
-        }
-        egui::Frame::new()
-            .inner_margin(Margin::symmetric(16, 10))
-            .show(ui, |ui| {
-                ui.set_width(ui.available_width());
-                ui.spacing_mut().item_spacing.y = 2.0;
-                egui::containers::Sides::new()
-                    .height(36.0)
-                    .shrink_left()
-                    .show(ui, title, |ui| {
-                        chevron(ui, palette, open);
-                        controls(ui)
-                    })
-                    .1
-            })
-            .inner
-    });
-    let clicked = response.response.clicked();
-    if response.response.hovered() {
+    let size = egui::vec2(ui.available_width(), HEADER_HEIGHT);
+    let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
+    if response.hovered() && ui.is_enabled() {
+        let bottom = if open { 0 } else { CARD_RADIUS };
+        let radius = CornerRadius {
+            nw: CARD_RADIUS,
+            ne: CARD_RADIUS,
+            sw: bottom,
+            se: bottom,
+        };
+        ui.painter().rect_filled(rect, radius, palette.card_hover);
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }
-    (clicked, response.inner)
+    let inner = rect.shrink2(egui::vec2(16.0, 0.0));
+    let mut content = ui.new_child(
+        egui::UiBuilder::new()
+            .max_rect(inner)
+            .layout(egui::Layout::left_to_right(egui::Align::Center)),
+    );
+    content.spacing_mut().item_spacing.y = 2.0;
+    let controls = egui::containers::Sides::new()
+        .height(inner.height())
+        .shrink_left()
+        .show(&mut content, title, |ui| {
+            chevron(ui, palette, open);
+            controls(ui)
+        })
+        .1;
+    (response.clicked(), controls)
 }
 
 /// A part of an open [`fold_card`], under a thin line.

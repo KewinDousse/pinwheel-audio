@@ -66,10 +66,10 @@ function Find($name) {
 }
 function ClickOn($name) {
   $el = Find $name
-  if (-not $el) { "      (no element named '$name')"; return $false }
+  if (-not $el) { Write-Host "      (no element named '$name')"; return $false }
   $r = $el.Current.BoundingRectangle
   $x = [int]($r.X + $r.Width / 2); $y = [int]($r.Y + $r.Height / 2)
-  "      click '$name' at $x,$y"
+  Write-Host "      click '$name' at $x,$y"
   [U]::Click($x, $y)
   Start-Sleep -Milliseconds 700
   $true
