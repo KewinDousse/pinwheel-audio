@@ -5,6 +5,7 @@
 //! so a device missing at startup cannot shrink the saved list.
 
 use crate::hotkey::Hotkey;
+use crate::i18n::Lang;
 use serde::{Deserialize, Serialize};
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -18,6 +19,8 @@ pub const DEFAULT_VOLUME_STEP: u8 = 10;
 #[serde(default)]
 pub struct Settings {
     pub version: u32,
+    /// `None` follows the Windows display language.
+    pub language: Option<Lang>,
     /// Volume change per wheel notch, in percent.
     pub volume_step: u8,
     pub osd: OsdSettings,
@@ -30,6 +33,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             version: VERSION,
+            language: None,
             volume_step: DEFAULT_VOLUME_STEP,
             osd: OsdSettings::default(),
             outputs: Vec::new(),
@@ -74,11 +78,12 @@ pub enum OsdStyle {
 impl OsdStyle {
     pub const ALL: [Self; 3] = [Self::Bar, Self::Pill, Self::BigNumber];
 
-    pub fn label(self) -> &'static str {
+    pub fn label(self, lang: Lang) -> &'static str {
+        let texts = lang.texts();
         match self {
-            Self::Bar => "Barre fine",
-            Self::Pill => "Pilule",
-            Self::BigNumber => "Grand chiffre",
+            Self::Bar => texts.style_bar,
+            Self::Pill => texts.style_pill,
+            Self::BigNumber => texts.style_big_number,
         }
     }
 }
@@ -95,11 +100,12 @@ pub enum OsdPosition {
 impl OsdPosition {
     pub const ALL: [Self; 3] = [Self::Top, Self::Center, Self::Bottom];
 
-    pub fn label(self) -> &'static str {
+    pub fn label(self, lang: Lang) -> &'static str {
+        let texts = lang.texts();
         match self {
-            Self::Top => "En haut",
-            Self::Center => "Au centre",
-            Self::Bottom => "En bas",
+            Self::Top => texts.position_top,
+            Self::Center => texts.position_center,
+            Self::Bottom => texts.position_bottom,
         }
     }
 }
@@ -205,6 +211,7 @@ mod tests {
                 }),
                 communications: true,
             }],
+            language: Some(Lang::French),
             ..Settings::default()
         }
     }

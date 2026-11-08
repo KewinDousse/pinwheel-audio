@@ -5,7 +5,8 @@
 //! `TaskbarCreated` broadcast, and retried on a timer until the first add
 //! succeeds.
 
-use crate::ipc::WM_TRAY;
+use crate::ipc::{WM_TRAY, wide};
+use pinwheel_core::i18n::Lang;
 use windows::Win32::Foundation::{HWND, POINT};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Shell::{
@@ -99,12 +100,19 @@ impl Drop for Tray {
 /// Shows the menu at the cursor and returns the chosen command. Does not
 /// touch the app state: the menu runs a modal loop that dispatches other
 /// messages meanwhile.
-pub fn show_menu(hwnd: HWND) -> Option<MenuCommand> {
+pub fn show_menu(hwnd: HWND, lang: Lang) -> Option<MenuCommand> {
+    let texts = lang.texts();
+    let (settings, quit) = (wide(texts.tray_settings), wide(texts.tray_quit));
     unsafe {
         let menu = CreatePopupMenu().ok()?;
-        let _ = AppendMenuW(menu, MF_STRING, MenuCommand::Settings as usize, w!("Paramètres"));
+        let _ = AppendMenuW(
+            menu,
+            MF_STRING,
+            MenuCommand::Settings as usize,
+            PCWSTR(settings.as_ptr()),
+        );
         let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
-        let _ = AppendMenuW(menu, MF_STRING, MenuCommand::Quit as usize, w!("Quitter Pinwheel"));
+        let _ = AppendMenuW(menu, MF_STRING, MenuCommand::Quit as usize, PCWSTR(quit.as_ptr()));
         let _ = SetMenuDefaultItem(menu, MenuCommand::Settings as u32, 0);
 
         let mut cursor = POINT::default();

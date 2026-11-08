@@ -5,6 +5,7 @@
 //! restarts the hold. The timers belong to the main window, which forwards
 //! `WM_TIMER` to [`Osd::on_timer`], so all state lives on the main thread.
 
+use pinwheel_core::i18n::Lang;
 use pinwheel_core::osd::{Content, Fonts, render};
 use pinwheel_core::settings::{OsdPosition, OsdSettings};
 use std::path::PathBuf;
@@ -88,7 +89,7 @@ impl Osd {
     }
 
     /// Shows `content` on the monitor under the cursor.
-    pub fn show(&mut self, content: &Content, settings: OsdSettings) {
+    pub fn show(&mut self, content: &Content, settings: OsdSettings, lang: Lang) {
         let mut cursor = POINT::default();
         let _ = unsafe { GetCursorPos(&mut cursor) };
         let monitor = unsafe { MonitorFromPoint(cursor, MONITOR_DEFAULTTONEAREST) };
@@ -101,7 +102,7 @@ impl Osd {
         let _ = unsafe { GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &mut dpi_x, &mut dpi_y) };
         let scale = dpi_x as f32 / 96.0;
 
-        let pixmap = render(content, settings.style, scale, &self.fonts);
+        let pixmap = render(content, settings.style, scale, &self.fonts, lang);
         let Some(surface) = Surface::new(&pixmap) else {
             log::error!("creating the display bitmap failed");
             return;

@@ -3,6 +3,7 @@
 //! A shortcut is any key, with or without modifiers, as `RegisterHotKey`
 //! accepts it: Ctrl, Alt, Shift and Win plus one other key.
 
+use crate::i18n::Lang;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::fmt;
@@ -98,61 +99,68 @@ pub fn is_cancel(hotkey: &Hotkey) -> bool {
 /// Name of keys whose label does not depend on the keyboard layout.
 /// Characters (letters, digits, punctuation) are named by the keyboard
 /// layout on Windows; this gives a fallback for them.
-pub fn key_name(vk: u16) -> Cow<'static, str> {
-    let name = match vk {
-        0x08 => "Retour arrière",
-        0x09 => "Tab",
-        0x0C => "Effacer",
-        0x0D => "Entrée",
-        0x13 => "Pause",
-        0x14 => "Verr. Maj",
-        0x1B => "Échap",
-        0x20 => "Espace",
-        0x21 => "Page préc.",
-        0x22 => "Page suiv.",
-        0x23 => "Fin",
-        0x24 => "Début",
-        0x25 => "Flèche gauche",
-        0x26 => "Flèche haut",
-        0x27 => "Flèche droite",
-        0x28 => "Flèche bas",
-        0x2C => "Impr. écran",
-        0x2D => "Inser",
-        0x2E => "Suppr",
-        0x5D => "Menu",
-        0x5F => "Veille",
-        0x6A => "Pavé *",
-        0x6B => "Pavé +",
-        0x6C => "Pavé séparateur",
-        0x6D => "Pavé -",
-        0x6E => "Pavé .",
-        0x6F => "Pavé /",
-        0x90 => "Verr. Num",
-        0x91 => "Arrêt défil",
-        0xA6 => "Navigateur : précédent",
-        0xA7 => "Navigateur : suivant",
-        0xA8 => "Navigateur : actualiser",
-        0xA9 => "Navigateur : arrêter",
-        0xAA => "Navigateur : rechercher",
-        0xAB => "Navigateur : favoris",
-        0xAC => "Navigateur : accueil",
-        0xAD => "Muet",
-        0xAE => "Volume -",
-        0xAF => "Volume +",
-        0xB0 => "Piste suivante",
-        0xB1 => "Piste précédente",
-        0xB2 => "Arrêt média",
-        0xB3 => "Lecture/Pause",
-        0xB4 => "Courrier",
-        0xB5 => "Lecteur multimédia",
-        0xB6 => "Application 1",
-        0xB7 => "Application 2",
+pub fn key_name(vk: u16, lang: Lang) -> Cow<'static, str> {
+    let french = lang == Lang::French;
+    let (english, french_name) = match vk {
+        0x08 => ("Backspace", "Retour arrière"),
+        0x09 => ("Tab", "Tab"),
+        0x0C => ("Clear", "Effacer"),
+        0x0D => ("Enter", "Entrée"),
+        0x13 => ("Pause", "Pause"),
+        0x14 => ("Caps Lock", "Verr. Maj"),
+        0x1B => ("Esc", "Échap"),
+        0x20 => ("Space", "Espace"),
+        0x21 => ("Page Up", "Page préc."),
+        0x22 => ("Page Down", "Page suiv."),
+        0x23 => ("End", "Fin"),
+        0x24 => ("Home", "Début"),
+        0x25 => ("Left", "Flèche gauche"),
+        0x26 => ("Up", "Flèche haut"),
+        0x27 => ("Right", "Flèche droite"),
+        0x28 => ("Down", "Flèche bas"),
+        0x2C => ("Print Screen", "Impr. écran"),
+        0x2D => ("Insert", "Inser"),
+        0x2E => ("Delete", "Suppr"),
+        0x5D => ("Menu", "Menu"),
+        0x5F => ("Sleep", "Veille"),
+        0x6A => ("Num *", "Pavé *"),
+        0x6B => ("Num +", "Pavé +"),
+        0x6C => ("Num Separator", "Pavé séparateur"),
+        0x6D => ("Num -", "Pavé -"),
+        0x6E => ("Num .", "Pavé ."),
+        0x6F => ("Num /", "Pavé /"),
+        0x90 => ("Num Lock", "Verr. Num"),
+        0x91 => ("Scroll Lock", "Arrêt défil"),
+        0xA6 => ("Browser Back", "Navigateur : précédent"),
+        0xA7 => ("Browser Forward", "Navigateur : suivant"),
+        0xA8 => ("Browser Refresh", "Navigateur : actualiser"),
+        0xA9 => ("Browser Stop", "Navigateur : arrêter"),
+        0xAA => ("Browser Search", "Navigateur : rechercher"),
+        0xAB => ("Browser Favorites", "Navigateur : favoris"),
+        0xAC => ("Browser Home", "Navigateur : accueil"),
+        0xAD => ("Mute", "Muet"),
+        0xAE => ("Volume Down", "Volume -"),
+        0xAF => ("Volume Up", "Volume +"),
+        0xB0 => ("Next Track", "Piste suivante"),
+        0xB1 => ("Previous Track", "Piste précédente"),
+        0xB2 => ("Stop Media", "Arrêt média"),
+        0xB3 => ("Play/Pause", "Lecture/Pause"),
+        0xB4 => ("Mail", "Courrier"),
+        0xB5 => ("Media Player", "Lecteur multimédia"),
+        0xB6 => ("App 1", "Application 1"),
+        0xB7 => ("App 2", "Application 2"),
         0x30..=0x39 | 0x41..=0x5A => return Cow::Owned(char::from(vk as u8).to_string()),
-        0x60..=0x69 => return Cow::Owned(format!("Pavé {}", vk - 0x60)),
+        0x60..=0x69 => {
+            let prefix = if french { "Pavé" } else { "Num" };
+            return Cow::Owned(format!("{prefix} {}", vk - 0x60));
+        }
         0x70..=0x87 => return Cow::Owned(format!("F{}", vk - 0x6F)),
-        _ => return Cow::Owned(format!("Touche 0x{vk:02X}")),
+        _ => {
+            let prefix = if french { "Touche" } else { "Key" };
+            return Cow::Owned(format!("{prefix} 0x{vk:02X}"));
+        }
     };
-    Cow::Borrowed(name)
+    Cow::Borrowed(if french { french_name } else { english })
 }
 
 /// Whether Windows gives the key a fixed name ([`key_name`]) rather than the
@@ -170,12 +178,13 @@ pub enum HotkeyError {
     ReservedKey,
 }
 
-impl fmt::Display for HotkeyError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            Self::NoKey => "Il manque une touche en plus de Ctrl, Alt, Maj ou Win.",
-            Self::ReservedKey => "F12 est réservée par Windows.",
-        })
+impl HotkeyError {
+    pub fn message(self, lang: Lang) -> &'static str {
+        let texts = lang.texts();
+        match self {
+            Self::NoKey => texts.shortcut_no_key,
+            Self::ReservedKey => texts.shortcut_reserved_f12,
+        }
     }
 }
 
@@ -190,14 +199,13 @@ pub enum HotkeyWarning {
     TakesOverKey,
 }
 
-impl fmt::Display for HotkeyWarning {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            Self::UsesWin => "Windows réserve beaucoup de raccourcis avec Win : celui-ci risque de ne pas marcher.",
-            Self::TakesOverKey => {
-                "Sans Ctrl, Alt ni Win, cette touche ne servira plus qu'à changer de sortie, dans toutes les applications."
-            }
-        })
+impl HotkeyWarning {
+    pub fn message(self, lang: Lang) -> &'static str {
+        let texts = lang.texts();
+        match self {
+            Self::UsesWin => texts.shortcut_uses_win,
+            Self::TakesOverKey => texts.shortcut_takes_over_key,
+        }
     }
 }
 
@@ -227,11 +235,11 @@ impl Hotkey {
     }
 
     /// Writes the modifiers then `key`, the name of the main key.
-    pub fn format_with(&self, f: &mut impl fmt::Write, key: &str) -> fmt::Result {
+    pub fn format_with(&self, f: &mut impl fmt::Write, key: &str, lang: Lang) -> fmt::Result {
         let modifiers = [
             (self.ctrl, "Ctrl"),
             (self.alt, "Alt"),
-            (self.shift, "Maj"),
+            (self.shift, lang.texts().shift),
             (self.win, "Win"),
         ];
         for (_, name) in modifiers.iter().filter(|(on, _)| *on) {
@@ -241,9 +249,10 @@ impl Hotkey {
     }
 }
 
+/// English, for the log.
 impl fmt::Display for Hotkey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.format_with(f, &key_name(self.key))
+        self.format_with(f, &key_name(self.key, Lang::English), Lang::English)
     }
 }
 
@@ -264,10 +273,22 @@ mod tests {
     #[test]
     fn displays_modifiers_in_fixed_order() {
         assert_eq!(hotkey(true, true, false, false, 0x31).to_string(), "Ctrl+Alt+1");
-        assert_eq!(hotkey(true, false, true, true, 0x70).to_string(), "Ctrl+Maj+Win+F1");
+        assert_eq!(hotkey(true, false, true, true, 0x70).to_string(), "Ctrl+Shift+Win+F1");
         assert_eq!(hotkey(false, false, false, false, 0x80).to_string(), "F17");
-        assert_eq!(hotkey(false, true, false, false, 0xB3).to_string(), "Alt+Lecture/Pause");
-        assert_eq!(hotkey(true, false, false, false, 0xBA).to_string(), "Ctrl+Touche 0xBA");
+        assert_eq!(hotkey(false, true, false, false, 0xB3).to_string(), "Alt+Play/Pause");
+        assert_eq!(hotkey(true, false, false, false, 0xBA).to_string(), "Ctrl+Key 0xBA");
+    }
+
+    #[test]
+    fn names_in_french() {
+        let shortcut = hotkey(false, true, true, false, 0xB3);
+        let mut text = String::new();
+        shortcut
+            .format_with(&mut text, &key_name(shortcut.key, Lang::French), Lang::French)
+            .unwrap();
+        assert_eq!(text, "Alt+Maj+Lecture/Pause");
+        assert_eq!(key_name(0x69, Lang::French), "Pavé 9");
+        assert_eq!(key_name(0xBA, Lang::French), "Touche 0xBA");
     }
 
     #[test]
@@ -344,9 +365,9 @@ mod tests {
 
     #[test]
     fn names_cover_the_key_ranges() {
-        assert_eq!(key_name(0x5A), "Z");
-        assert_eq!(key_name(0x69), "Pavé 9");
-        assert_eq!(key_name(0x87), "F24");
+        assert_eq!(key_name(0x5A, Lang::English), "Z");
+        assert_eq!(key_name(0x69, Lang::English), "Num 9");
+        assert_eq!(key_name(0x87, Lang::English), "F24");
         assert!(!has_fixed_name(0x41));
         assert!(!has_fixed_name(0xBA));
         assert!(has_fixed_name(0x70));

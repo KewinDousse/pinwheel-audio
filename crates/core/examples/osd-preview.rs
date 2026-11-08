@@ -2,7 +2,10 @@
 //! Windows.
 //!
 //! `cargo run -p pinwheel-core --example osd-preview -- <out.png> <regular.ttf> [bold.ttf]`
+//!
+//! Rows alternate English and French.
 
+use pinwheel_core::i18n::Lang;
 use pinwheel_core::osd::{Content, Fonts, render};
 use pinwheel_core::settings::OsdStyle;
 use pinwheel_core::volume::VolumeState;
@@ -31,13 +34,14 @@ fn main() {
             level: 0.3,
             muted: true,
         }),
-        Content::Output("Casque (Realtek USB Audio)".into()),
-        Content::Notice("Haut-parleurs : déconnectée".into()),
+        Content::Output("Headphones (Realtek USB Audio)".into()),
+        Content::Notice((Lang::English.texts().output_disconnected)("Speakers")),
     ];
     let scale = 1.5;
     let images: Vec<Vec<Pixmap>> = OsdStyle::ALL
         .iter()
-        .map(|&style| contents.iter().map(|c| render(c, style, scale, &fonts)).collect())
+        .flat_map(|&style| Lang::ALL.map(|lang| (style, lang)))
+        .map(|(style, lang)| contents.iter().map(|c| render(c, style, scale, &fonts, lang)).collect())
         .collect();
 
     let gap = 24;

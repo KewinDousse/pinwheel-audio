@@ -14,7 +14,6 @@ pub const SETTINGS_ARG: &str = "--settings";
 pub const MAIN_CLASS: PCWSTR = w!("Pinwheel.Main");
 pub const MAIN_MUTEX: PCWSTR = w!("Local\\Pinwheel.Main");
 pub const SETTINGS_MUTEX: PCWSTR = w!("Local\\Pinwheel.Settings");
-pub const SETTINGS_TITLE: &str = "Paramètres de Pinwheel";
 
 /// Open the settings window (second launch of the executable).
 pub const WM_OPEN_SETTINGS: u32 = WM_APP + 1;

@@ -13,6 +13,7 @@
 use crate::hook::VK_MASK;
 use crate::thread::{MessageThread, run_message_loop};
 use pinwheel_core::hotkey::{HeldModifiers, Hotkey, has_fixed_name, is_cancel, is_usable_key, key_name};
+use pinwheel_core::i18n::Lang;
 use std::cell::RefCell;
 use std::sync::mpsc;
 use windows::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
@@ -28,14 +29,15 @@ const TIMEOUT_MS: u32 = 15_000;
 
 /// Name of a shortcut with the main key as the current keyboard layout
 /// writes it ("Ctrl+Alt+É" on a French layout).
-pub fn describe(hotkey: &Hotkey) -> String {
+pub fn describe(hotkey: &Hotkey, lang: Lang) -> String {
+    let fixed = || key_name(hotkey.key, lang).into_owned();
     let key = if has_fixed_name(hotkey.key) {
-        key_name(hotkey.key).into_owned()
+        fixed()
     } else {
-        layout_name(hotkey.key).unwrap_or_else(|| key_name(hotkey.key).into_owned())
+        layout_name(hotkey.key).unwrap_or_else(fixed)
     };
     let mut text = String::new();
-    let _ = hotkey.format_with(&mut text, &key);
+    let _ = hotkey.format_with(&mut text, &key, lang);
     text
 }
 

@@ -71,10 +71,8 @@ impl Hotkeys {
             Err(e) => {
                 log::warn!("shortcut {hotkey} for \"{}\" refused: {e}", output.name);
                 self.refused.push(index);
-                status.hotkey_errors.insert(
-                    output.id.clone(),
-                    "Windows refuse ce raccourci : une autre application l'utilise sans doute.".into(),
-                );
+                // The settings window words the refusal in its own language.
+                status.hotkey_errors.insert(output.id.clone(), e.to_string());
             }
         }
     }

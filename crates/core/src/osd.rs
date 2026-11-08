@@ -3,6 +3,7 @@
 //! Sizes are in logical pixels (96 DPI) and multiplied by the monitor scale.
 //! The Windows app copies the pixmap into a layered window.
 
+use crate::i18n::{Lang, Texts};
 use crate::settings::OsdStyle;
 use crate::volume::VolumeState;
 use ab_glyph::{Font, FontVec, PxScale, ScaleFont, point};
@@ -60,12 +61,13 @@ impl Fonts {
 }
 
 /// Draws `content` at `scale` (monitor DPI / 96).
-pub fn render(content: &Content, style: OsdStyle, scale: f32, fonts: &Fonts) -> Pixmap {
+pub fn render(content: &Content, style: OsdStyle, scale: f32, fonts: &Fonts, lang: Lang) -> Pixmap {
+    let texts = lang.texts();
     match content {
         Content::Volume(volume) => match style {
             OsdStyle::Bar => bar(*volume, scale),
-            OsdStyle::Pill => pill(*volume, scale, fonts),
-            OsdStyle::BigNumber => big_number(*volume, scale, fonts),
+            OsdStyle::Pill => pill(*volume, scale, fonts, texts),
+            OsdStyle::BigNumber => big_number(*volume, scale, fonts, texts),
         },
         Content::Output(name) => label(name, true, style, scale, fonts),
         Content::Notice(text) => label(text, false, style, scale, fonts),
@@ -205,16 +207,16 @@ fn bar(volume: VolumeState, scale: f32) -> Pixmap {
     canvas.pixmap
 }
 
-fn pill(volume: VolumeState, scale: f32, fonts: &Fonts) -> Pixmap {
+fn pill(volume: VolumeState, scale: f32, fonts: &Fonts, texts: &Texts) -> Pixmap {
     let (width, height) = (300.0, 52.0);
     let mut canvas = Canvas::new(width, height, height / 2.0, scale);
     let size = 17.0;
     let font = fonts.bold.as_ref();
     // Room for the widest label, so the gauge does not move with the value.
-    let reserved = text_width(font, size, "100 %").max(text_width(font, size, "Muet"));
+    let reserved = text_width(font, size, &(texts.percent)(100)).max(text_width(font, size, texts.muted));
     canvas.speaker(18.0, height / 2.0, 22.0, Some(volume));
     canvas.gauge(54.0, width - 20.0 - reserved - 16.0, height / 2.0, volume);
-    let percent = percent_text(volume);
+    let percent = percent_text(volume, texts);
     let text_width = text_width(font, size, &percent);
     canvas.text(
         fonts.bold.as_ref(),
@@ -226,14 +228,20 @@ fn pill(volume: VolumeState, scale: f32, fonts: &Fonts) -> Pixmap {
     canvas.pixmap
 }
 
-fn big_number(volume: VolumeState, scale: f32, fonts: &Fonts) -> Pixmap {
+fn big_number(volume: VolumeState, scale: f32, fonts: &Fonts, texts: &Texts) -> Pixmap {
     let (width, height) = (180.0, 150.0);
     let mut canvas = Canvas::new(width, height, 22.0, scale);
     let baseline = 82.0;
     if volume.muted {
         let size = 34.0;
-        let text_width = text_width(fonts.bold.as_ref(), size, "Muet");
-        canvas.text(fonts.bold.as_ref(), size, "Muet", (width - text_width) / 2.0, baseline);
+        let text_width = text_width(fonts.bold.as_ref(), size, texts.muted);
+        canvas.text(
+            fonts.bold.as_ref(),
+            size,
+            texts.muted,
+            (width - text_width) / 2.0,
+            baseline,
+        );
     } else {
         let number = format!("{}", (volume.level * 100.0).round() as i32);
         let (big, small) = (56.0, 24.0);
@@ -266,11 +274,11 @@ fn label(text: &str, with_icon: bool, style: OsdStyle, scale: f32, fonts: &Fonts
     canvas.pixmap
 }
 
-fn percent_text(volume: VolumeState) -> String {
+fn percent_text(volume: VolumeState, texts: &Texts) -> String {
     if volume.muted {
-        "Muet".into()
+        texts.muted.into()
     } else {
-        format!("{} %", (volume.level * 100.0).round() as i32)
+        (texts.percent)((volume.level * 100.0).round() as i32)
     }
 }
 

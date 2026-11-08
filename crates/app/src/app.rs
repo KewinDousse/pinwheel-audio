@@ -14,8 +14,9 @@ use crate::hotkeys::Hotkeys;
 use crate::ipc::{self, InstanceLock, WM_OPEN_SETTINGS, WM_PREVIEW_OSD, WM_RELOAD, WM_TRAY, WM_VOLUME_NOTCHES};
 use crate::osd::Osd;
 use crate::tray::{self, MenuCommand, Tray};
-use crate::{paths, startup};
+use crate::{language, paths, startup};
 use pinwheel_core::devices::{Resolution, resolve};
+use pinwheel_core::i18n::{Lang, Texts};
 use pinwheel_core::osd::Content;
 use pinwheel_core::settings::{self, LoadIssue, Settings};
 use pinwheel_core::status;
@@ -179,10 +180,18 @@ impl App {
         None
     }
 
+    fn lang(&self) -> Lang {
+        language::current(&self.settings)
+    }
+
+    fn texts(&self) -> &'static Texts {
+        self.lang().texts()
+    }
+
     fn show(&mut self, content: &Content) {
-        let style = self.settings.osd;
+        let (style, lang) = (self.settings.osd, self.lang());
         if let Some(osd) = self.osd.as_mut() {
-            osd.show(content, style);
+            osd.show(content, style, lang);
         }
     }
 
@@ -214,7 +223,7 @@ impl App {
                 device
             }
             Resolution::Unavailable | Resolution::Unknown => {
-                self.show(&Content::Notice(format!("{} : déconnectée", binding.name)));
+                self.show(&Content::Notice((self.texts().output_disconnected)(&binding.name)));
                 return;
             }
         };
@@ -227,7 +236,7 @@ impl App {
             self.show(&Content::Output(target.name));
         } else {
             log::error!("switching to \"{}\" failed (default is now {now:?})", target.name);
-            self.show(&Content::Notice(format!("Impossible de passer sur {}", target.name)));
+            self.show(&Content::Notice((self.texts().output_switch_failed)(&target.name)));
         }
     }
 
@@ -255,9 +264,7 @@ impl App {
             None => {}
             Some(LoadIssue::Corrupt { backup, error }) => {
                 log::error!("unreadable settings ({error}), kept as {}", backup.display());
-                self.show(&Content::Notice(
-                    "Paramètres illisibles : une copie a été gardée".into(),
-                ));
+                self.show(&Content::Notice(self.texts().settings_corrupt_notice.into()));
             }
             Some(LoadIssue::Io(e)) => log::error!("reading the settings failed: {e}"),
         }
@@ -324,6 +331,17 @@ fn with_app(action: impl FnOnce(&mut App)) {
     });
 }
 
+/// The tray menu reads the language without holding the app borrow
+/// through its modal loop.
+fn current_lang() -> Lang {
+    APP.with(|cell| {
+        cell.try_borrow()
+            .ok()
+            .and_then(|app| app.as_ref().map(App::lang))
+            .unwrap_or(Lang::English)
+    })
+}
+
 unsafe extern "system" fn window_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     match msg {
         WM_VOLUME_NOTCHES => with_app(|app| app.on_volume_notches(wparam.0 as isize as i32)),
@@ -334,7 +352,7 @@ unsafe extern "system" fn window_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lpar
         }
         WM_TRAY => match lparam.0 as u32 {
             WM_LBUTTONUP => open_settings(),
-            WM_RBUTTONUP => match tray::show_menu(hwnd) {
+            WM_RBUTTONUP => match tray::show_menu(hwnd, current_lang()) {
                 Some(MenuCommand::Settings) => open_settings(),
                 Some(MenuCommand::Quit) => {
                     let _ = unsafe { DestroyWindow(hwnd) };

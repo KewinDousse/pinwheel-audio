@@ -7,7 +7,8 @@ use std::path::Path;
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Status {
-    /// Shortcuts Windows refused to register, keyed by output ID.
+    /// Shortcuts Windows refused to register: the Windows error, keyed by
+    /// output ID. The settings window shows its own message for them.
     pub hotkey_errors: BTreeMap<String, String>,
 }
 

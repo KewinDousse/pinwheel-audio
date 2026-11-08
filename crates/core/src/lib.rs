@@ -5,6 +5,7 @@
 
 pub mod devices;
 pub mod hotkey;
+pub mod i18n;
 pub mod osd;
 pub mod settings;
 pub mod status;

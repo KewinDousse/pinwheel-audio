@@ -8,11 +8,12 @@
 use crate::audio::Audio;
 use crate::ipc::{self, InstanceLock, WM_PREVIEW_OSD, WM_RELOAD, wide};
 use crate::keys::{self, Capture, Captured};
-use crate::paths;
 use crate::startup::{self, StartupState};
+use crate::{language, paths};
 use eframe::egui;
 use pinwheel_core::devices::{DeviceInfo, Resolution, resolve};
 use pinwheel_core::hotkey::Hotkey;
+use pinwheel_core::i18n::{Lang, Texts};
 use pinwheel_core::settings::{self, OsdPosition, OsdStyle, OutputBinding, Settings, duplicate_hotkey};
 use pinwheel_core::status::{self, Status};
 use pinwheel_core::volume::STEP_RANGE;
@@ -26,7 +27,6 @@ use windows::Win32::UI::WindowsAndMessaging::{
 use windows::core::{PCWSTR, w};
 
 const REFRESH_EVERY: Duration = Duration::from_secs(1);
-const CAPTURE_FAILED: &str = "Capture du raccourci impossible : voir le journal.";
 
 pub fn run() {
     let Some(_lock) = InstanceLock::acquire(ipc::SETTINGS_MUTEX) else {
@@ -35,8 +35,10 @@ pub fn run() {
     };
     let _ = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };
 
+    let app = SettingsApp::new();
+    let title = app.texts().settings_title;
     let mut viewport = egui::ViewportBuilder::default()
-        .with_title(ipc::SETTINGS_TITLE)
+        .with_title(title)
         .with_inner_size([620.0, 720.0])
         .with_min_inner_size([480.0, 360.0]);
     if let Some(icon) = window_icon() {
@@ -46,21 +48,21 @@ pub fn run() {
         viewport,
         ..Default::default()
     };
-    if let Err(e) = eframe::run_native(
-        ipc::SETTINGS_TITLE,
-        options,
-        Box::new(|_| Ok(Box::new(SettingsApp::new()))),
-    ) {
+    if let Err(e) = eframe::run_native(title, options, Box::new(|_| Ok(Box::new(app)))) {
         log::error!("the settings window failed: {e}");
     }
 }
 
+/// The open window may still have the title of another language.
 fn focus_existing_window() {
-    let title = wide(ipc::SETTINGS_TITLE);
-    if let Ok(hwnd) = unsafe { FindWindowW(PCWSTR::null(), PCWSTR(title.as_ptr())) } {
-        unsafe {
-            let _ = ShowWindow(hwnd, SW_RESTORE);
-            let _ = SetForegroundWindow(hwnd);
+    for lang in Lang::ALL {
+        let title = wide(lang.texts().settings_title);
+        if let Ok(hwnd) = unsafe { FindWindowW(PCWSTR::null(), PCWSTR(title.as_ptr())) } {
+            unsafe {
+                let _ = ShowWindow(hwnd, SW_RESTORE);
+                let _ = SetForegroundWindow(hwnd);
+            }
+            return;
         }
     }
 }
@@ -106,6 +108,8 @@ struct SettingsApp {
     last_refresh: Option<Instant>,
     error: Option<String>,
     capture: Option<ActiveCapture>,
+    /// Language of the window title, updated when the setting changes.
+    title_lang: Lang,
 }
 
 /// Shortcut being captured for the output at `index`.
@@ -118,14 +122,11 @@ impl SettingsApp {
     fn new() -> Self {
         let path = paths::settings_file();
         let (settings, issue) = settings::load(&path);
+        let lang = language::current(&settings);
+        let texts = lang.texts();
         let error = issue.map(|issue| match issue {
-            settings::LoadIssue::Corrupt { backup, .. } => {
-                format!(
-                    "Le fichier de paramètres était illisible. Il a été gardé sous {}.",
-                    backup.display()
-                )
-            }
-            settings::LoadIssue::Io(e) => format!("Lecture des paramètres impossible : {e}"),
+            settings::LoadIssue::Corrupt { backup, .. } => (texts.settings_corrupt)(&backup.display().to_string()),
+            settings::LoadIssue::Io(e) => (texts.settings_unreadable)(&e.to_string()),
         });
         Self {
             file_time: file_time(&path),
@@ -139,7 +140,16 @@ impl SettingsApp {
             last_refresh: None,
             error,
             capture: None,
+            title_lang: lang,
         }
+    }
+
+    fn lang(&self) -> Lang {
+        language::current(&self.settings)
+    }
+
+    fn texts(&self) -> &'static Texts {
+        self.lang().texts()
     }
 
     fn start_capture(&mut self, index: usize, ctx: &egui::Context) {
@@ -150,7 +160,7 @@ impl SettingsApp {
             Ok(capture) => self.capture = Some(ActiveCapture { index, capture }),
             Err(e) => {
                 log::error!("starting the shortcut capture failed: {e}");
-                self.error = Some(CAPTURE_FAILED.into());
+                self.error = Some(self.texts().capture_failed.into());
             }
         }
     }
@@ -169,7 +179,7 @@ impl SettingsApp {
                 }
             }
             Captured::Cancelled => {}
-            Captured::Failed => self.error = Some(CAPTURE_FAILED.into()),
+            Captured::Failed => self.error = Some(self.texts().capture_failed.into()),
         }
     }
 
@@ -211,22 +221,20 @@ impl SettingsApp {
             }
             Err(e) => {
                 log::error!("saving the settings failed: {e}");
-                self.error = Some(format!("Enregistrement impossible : {e}"));
+                self.error = Some((self.texts().settings_save_failed)(&e.to_string()));
             }
         }
     }
 
     fn banners(&mut self, ui: &mut egui::Ui) {
+        let t = self.texts();
         if let Some(error) = &self.error {
             ui.colored_label(ui.visuals().error_fg_color, error);
         }
         if !self.main_running {
             ui.horizontal_wrapped(|ui| {
-                ui.colored_label(
-                    ui.visuals().warn_fg_color,
-                    "Pinwheel ne tourne pas : la molette et les raccourcis sont inactifs.",
-                );
-                if ui.button("Lancer Pinwheel").clicked()
+                ui.colored_label(ui.visuals().warn_fg_color, t.not_running);
+                if ui.button(t.start_app).clicked()
                     && let Ok(exe) = std::env::current_exe()
                 {
                     let _ = std::process::Command::new(exe).spawn();
@@ -235,9 +243,26 @@ impl SettingsApp {
         }
     }
 
+    fn language_row(&mut self, ui: &mut egui::Ui) {
+        let t = self.texts();
+        ui.horizontal(|ui| {
+            ui.label(t.language);
+            let selected = self.settings.language.map_or(t.language_windows, Lang::native_name);
+            egui::ComboBox::from_id_salt("language")
+                .selected_text(selected)
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut self.settings.language, None, t.language_windows);
+                    for lang in Lang::ALL {
+                        ui.selectable_value(&mut self.settings.language, Some(lang), lang.native_name());
+                    }
+                });
+        });
+    }
+
     fn outputs_section(&mut self, ui: &mut egui::Ui) {
-        ui.heading("Sorties audio");
-        ui.label("Le raccourci d'une sortie en fait la sortie par défaut. Une sortie débranchée garde son raccourci.");
+        let (lang, t) = (self.lang(), self.texts());
+        ui.heading(t.outputs_heading);
+        ui.label(t.outputs_help);
         ui.add_space(4.0);
 
         let mut remove = None;
@@ -245,8 +270,8 @@ impl SettingsApp {
         let capturing = self.capture.as_ref().map(|c| c.index);
         for index in 0..self.settings.outputs.len() {
             let duplicate_of = duplicate_hotkey(&self.settings.outputs, index).map(|o| o.name.clone());
-            let refused = self.status.hotkey_errors.get(&self.settings.outputs[index].id).cloned();
-            let (state, connected) = device_state(&self.settings.outputs[index], &self.devices);
+            let refused = self.status.hotkey_errors.contains_key(&self.settings.outputs[index].id);
+            let (state, connected) = device_state(&self.settings.outputs[index], &self.devices, t);
             let output = &mut self.settings.outputs[index];
             egui::Frame::group(ui.style()).show(ui, |ui| {
                 ui.set_width(ui.available_width());
@@ -258,19 +283,19 @@ impl SettingsApp {
                         ui.weak(state)
                     };
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.button("Retirer").clicked() {
+                        if ui.button(t.remove).clicked() {
                             remove = Some(index);
                         }
                     });
                 });
-                match hotkey_row(ui, output.hotkey.as_ref(), capturing == Some(index)) {
+                match hotkey_row(ui, output.hotkey.as_ref(), capturing == Some(index), lang) {
                     HotkeyAction::Capture => capture_request = Some(Some(index)),
                     HotkeyAction::StopCapture => capture_request = Some(None),
                     HotkeyAction::Clear => output.hotkey = None,
                     HotkeyAction::None => {}
                 }
-                ui.checkbox(&mut output.communications, "Aussi pour les appels (Teams, Discord…)");
-                hotkey_messages(ui, output.hotkey.as_ref(), duplicate_of.as_deref(), refused.as_deref());
+                ui.checkbox(&mut output.communications, t.communications);
+                hotkey_messages(ui, output.hotkey.as_ref(), duplicate_of.as_deref(), refused, lang);
             });
         }
         match capture_request {
@@ -285,7 +310,7 @@ impl SettingsApp {
         }
 
         if self.audio.is_none() {
-            ui.colored_label(ui.visuals().warn_fg_color, "Le service audio de Windows ne répond pas.");
+            ui.colored_label(ui.visuals().warn_fg_color, t.audio_unavailable);
         }
         let available: Vec<DeviceInfo> = self
             .devices
@@ -296,7 +321,7 @@ impl SettingsApp {
         let mut added = None;
         ui.add_enabled_ui(!available.is_empty(), |ui| {
             egui::ComboBox::from_id_salt("add-output")
-                .selected_text("Ajouter une sortie…")
+                .selected_text(t.add_output)
                 .width(320.0)
                 .show_ui(ui, |ui| {
                     for device in &available {
@@ -317,52 +342,52 @@ impl SettingsApp {
     }
 
     fn volume_section(&mut self, ui: &mut egui::Ui) {
-        ui.heading("Volume");
-        ui.label("Win + molette règle le volume de la sortie par défaut.");
+        let t = self.texts();
+        ui.heading(t.volume_heading);
+        ui.label(t.volume_help);
         ui.add(
             egui::Slider::new(&mut self.settings.volume_step, STEP_RANGE)
-                .text("par cran de molette")
-                .suffix(" %"),
+                .text(t.per_notch)
+                .suffix(t.percent_suffix),
         );
     }
 
     fn display_section(&mut self, ui: &mut egui::Ui) {
-        ui.heading("Affichage");
+        let (lang, t) = (self.lang(), self.texts());
+        ui.heading(t.display_heading);
         ui.horizontal(|ui| {
-            ui.label("Style :");
+            ui.label(t.style);
             for style in OsdStyle::ALL {
-                ui.radio_value(&mut self.settings.osd.style, style, style.label());
+                ui.radio_value(&mut self.settings.osd.style, style, style.label(lang));
             }
         });
         ui.horizontal(|ui| {
-            ui.label("Position :");
+            ui.label(t.position);
             for position in OsdPosition::ALL {
-                ui.radio_value(&mut self.settings.osd.position, position, position.label());
+                ui.radio_value(&mut self.settings.osd.position, position, position.label(lang));
             }
         });
-        if ui.add_enabled(self.main_running, egui::Button::new("Aperçu")).clicked() {
+        if ui
+            .add_enabled(self.main_running, egui::Button::new(t.preview))
+            .clicked()
+        {
             ipc::notify_main(WM_PREVIEW_OSD);
         }
     }
 
     fn startup_section(&mut self, ui: &mut egui::Ui) {
-        ui.heading("Démarrage");
+        let t = self.texts();
+        ui.heading(t.startup_heading);
         let mut enabled = self.startup == StartupState::On;
-        if ui
-            .checkbox(&mut enabled, "Lancer Pinwheel à l'ouverture de session")
-            .changed()
-        {
+        if ui.checkbox(&mut enabled, t.startup_checkbox).changed() {
             if let Err(e) = startup::set(enabled) {
                 log::error!("changing the startup entry failed: {e}");
-                self.error = Some(format!("Modification du démarrage impossible : {e}"));
+                self.error = Some((t.startup_failed)(&e.to_string()));
             }
             self.startup = startup::state();
         }
         if self.startup == StartupState::DisabledByWindows {
-            ui.colored_label(
-                ui.visuals().warn_fg_color,
-                "Désactivé dans les applications de démarrage de Windows. Cocher la case le réactive.",
-            );
+            ui.colored_label(ui.visuals().warn_fg_color, t.startup_disabled_by_windows);
         }
     }
 }
@@ -375,9 +400,17 @@ impl eframe::App for SettingsApp {
         // Taken before the capture result lands, so that it gets saved.
         let before = self.settings.clone();
         self.poll_capture();
+        let lang = self.lang();
+        if lang != self.title_lang {
+            self.title_lang = lang;
+            let title = lang.texts().settings_title.into();
+            ui.ctx().send_viewport_cmd(egui::ViewportCommand::Title(title));
+        }
         egui::CentralPanel::default().show(ui, |ui| {
             egui::ScrollArea::vertical().show(ui, |ui| {
                 self.banners(ui);
+                self.language_row(ui);
+                ui.separator();
                 self.outputs_section(ui);
                 ui.separator();
                 self.volume_section(ui);
@@ -386,7 +419,7 @@ impl eframe::App for SettingsApp {
                 ui.separator();
                 self.startup_section(ui);
                 ui.separator();
-                if ui.button("Ouvrir le dossier des journaux").clicked() {
+                if ui.button(self.texts().open_logs).clicked() {
                     open_folder(&paths::log_dir());
                 }
             });
@@ -398,11 +431,11 @@ impl eframe::App for SettingsApp {
 }
 
 /// Label of a saved output's state, and whether it is plugged in.
-fn device_state(output: &OutputBinding, devices: &[DeviceInfo]) -> (&'static str, bool) {
+fn device_state(output: &OutputBinding, devices: &[DeviceInfo], t: &'static Texts) -> (&'static str, bool) {
     match resolve(&output.id, &output.name, devices) {
-        Resolution::Ready(_) | Resolution::Moved(_) => ("connectée", true),
-        Resolution::Unavailable => ("déconnectée", false),
-        Resolution::Unknown => ("introuvable", false),
+        Resolution::Ready(_) | Resolution::Moved(_) => (t.connected, true),
+        Resolution::Unavailable => (t.disconnected, false),
+        Resolution::Unknown => (t.not_found, false),
     }
 }
 
@@ -413,30 +446,31 @@ enum HotkeyAction {
     Clear,
 }
 
-fn hotkey_row(ui: &mut egui::Ui, hotkey: Option<&Hotkey>, capturing: bool) -> HotkeyAction {
+fn hotkey_row(ui: &mut egui::Ui, hotkey: Option<&Hotkey>, capturing: bool, lang: Lang) -> HotkeyAction {
+    let t = lang.texts();
     let mut action = HotkeyAction::None;
     ui.horizontal(|ui| {
-        ui.label("Raccourci :");
+        ui.label(t.shortcut);
         if capturing {
-            ui.strong("Appuie sur la combinaison voulue… (Échap pour annuler)");
-            if ui.button("Annuler").clicked() {
+            ui.strong(t.capture_prompt);
+            if ui.button(t.cancel).clicked() {
                 action = HotkeyAction::StopCapture;
             }
             return;
         }
         match hotkey {
             Some(hotkey) => {
-                ui.monospace(keys::describe(hotkey));
-                if ui.button("Changer…").clicked() {
+                ui.monospace(keys::describe(hotkey, lang));
+                if ui.button(t.change).clicked() {
                     action = HotkeyAction::Capture;
                 }
-                if ui.button("Supprimer").clicked() {
+                if ui.button(t.clear).clicked() {
                     action = HotkeyAction::Clear;
                 }
             }
             None => {
-                ui.weak("aucun");
-                if ui.button("Choisir…").clicked() {
+                ui.weak(t.no_shortcut);
+                if ui.button(t.choose).clicked() {
                     action = HotkeyAction::Capture;
                 }
             }
@@ -445,21 +479,19 @@ fn hotkey_row(ui: &mut egui::Ui, hotkey: Option<&Hotkey>, capturing: bool) -> Ho
     action
 }
 
-fn hotkey_messages(ui: &mut egui::Ui, hotkey: Option<&Hotkey>, duplicate_of: Option<&str>, refused: Option<&str>) {
+fn hotkey_messages(ui: &mut egui::Ui, hotkey: Option<&Hotkey>, duplicate_of: Option<&str>, refused: bool, lang: Lang) {
     let Some(hotkey) = hotkey else { return };
+    let t = lang.texts();
     let error = ui.visuals().error_fg_color;
     if let Err(e) = hotkey.validate() {
-        ui.colored_label(error, e.to_string());
+        ui.colored_label(error, e.message(lang));
     } else if let Some(other) = duplicate_of {
-        ui.colored_label(
-            error,
-            format!("Même raccourci que « {other} » : seul le premier fonctionne."),
-        );
-    } else if let Some(message) = refused {
-        ui.colored_label(error, message);
+        ui.colored_label(error, (t.duplicate_shortcut)(other));
+    } else if refused {
+        ui.colored_label(error, t.shortcut_refused);
     }
     for warning in hotkey.warnings() {
-        ui.colored_label(ui.visuals().warn_fg_color, warning.to_string());
+        ui.colored_label(ui.visuals().warn_fg_color, warning.message(lang));
     }
 }
 

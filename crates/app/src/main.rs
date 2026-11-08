@@ -23,6 +23,8 @@ mod ipc;
 #[cfg(windows)]
 mod keys;
 #[cfg(windows)]
+mod language;
+#[cfg(windows)]
 mod logging;
 #[cfg(windows)]
 mod osd;
@@ -50,6 +52,6 @@ fn main() {
 
 #[cfg(not(windows))]
 fn main() {
-    eprintln!("Pinwheel ne fonctionne que sous Windows.");
+    eprintln!("Pinwheel only runs on Windows.");
     std::process::exit(1);
 }
