@@ -571,6 +571,8 @@ impl eframe::App for SettingsApp {
         self.refresh();
         ui.ctx().request_repaint_after(REFRESH_EVERY);
 
+        let open_before = self.open.clone();
+        let capturing_before = self.capture.is_some();
         self.poll_capture();
         if self.capture.is_some() {
             // The countdown moves.
@@ -600,8 +602,14 @@ impl eframe::App for SettingsApp {
         // A slider being dragged is saved once, when it is released: each
         // save makes the background process register every shortcut again.
         let dragging = ui.ctx().input(|i| i.pointer.any_down());
-        if self.settings != self.saved && !dragging {
+        let changed = self.settings != self.saved;
+        if changed && !dragging {
             self.save();
+        }
+        // This pass drew the state from before the click: without a new
+        // pass, the change would only show at the next mouse move.
+        if changed || self.open != open_before || self.capture.is_some() != capturing_before {
+            ui.ctx().request_repaint();
         }
     }
 }

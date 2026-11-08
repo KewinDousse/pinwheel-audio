@@ -83,6 +83,7 @@ impl Capture {
     pub fn start(on_result: impl Fn() + Send + 'static) -> std::io::Result<Self> {
         let (sender, receiver) = mpsc::channel();
         let thread = MessageThread::spawn("shortcut-capture", move || run(sender, Box::new(on_result)))?;
+        log::info!("shortcut capture started");
         ipc::notify_main(WM_CAPTURE_BEGIN);
         Ok(Self {
             receiver,

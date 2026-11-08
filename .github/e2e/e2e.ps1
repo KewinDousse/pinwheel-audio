@@ -38,7 +38,7 @@ $title = 'Pinwheel settings'
 $n = 0
 function Shot($label) {
   $script:n++
-  $h = [U]::FindWindow($null, $title)
+  $h = [U]::FindWindow([NullString]::Value, $title)
   $r = New-Object U+RECT
   if ($h -eq [IntPtr]::Zero -or -not [U]::GetWindowRect($h, [ref]$r)) {
     $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
@@ -68,7 +68,9 @@ function ClickOn($name) {
   $el = Find $name
   if (-not $el) { "      (no element named '$name')"; return $false }
   $r = $el.Current.BoundingRectangle
-  [U]::Click([int]($r.X + $r.Width / 2), [int]($r.Y + $r.Height / 2))
+  $x = [int]($r.X + $r.Width / 2); $y = [int]($r.Y + $r.Height / 2)
+  "      click '$name' at $x,$y"
+  [U]::Click($x, $y)
   Start-Sleep -Milliseconds 700
   $true
 }
@@ -91,7 +93,7 @@ Check 'Start menu entry created' (Test-Path $shortcut)
 # The settings window, each card open in turn.
 Start-Process $Exe -ArgumentList '--settings'
 Start-Sleep 8
-Check 'settings window opens' ([U]::FindWindow($null, $title) -ne [IntPtr]::Zero)
+Check 'settings window opens' ([U]::FindWindow([NullString]::Value, $title) -ne [IntPtr]::Zero)
 Shot 'closed'
 foreach ($card in '+  Add an output', '+ wheel changes the volume', 'General') {
   if (ClickOn $card) { Shot ("open-" + ($card -replace '[^a-z]', '')) }
@@ -99,7 +101,8 @@ foreach ($card in '+  Add an output', '+ wheel changes the volume', 'General') {
 ClickOn 'General' | Out-Null
 
 # Shortcut capture: Ctrl+Alt+1 is saved.
-Check 'capture starts from the card' (ClickOn 'Set a key')
+ClickOn 'Set a key' | Out-Null
+Check 'capture starts from the card' (LogHas 'shortcut capture started')
 Shot 'capture'
 Press 0x11, 0x12, 0x31
 Start-Sleep 2
