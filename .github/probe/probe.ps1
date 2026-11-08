@@ -22,6 +22,13 @@ public static class U {
   public static void Click(int x, int y) { SetCursorPos(x, y); mouse_event(2,0,0,0,UIntPtr.Zero); mouse_event(4,0,0,0,UIntPtr.Zero); }
   public static void Key(byte vk, bool up) { keybd_event(vk, 0, up ? 2u : 0u, UIntPtr.Zero); }
   public static void Wheel(int delta) { mouse_event(0x800, 0, 0, delta, UIntPtr.Zero); }
+  [StructLayout(LayoutKind.Sequential)] public struct RECT { public int L, T, R, B; }
+  [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern IntPtr FindWindow(string c, string t);
+  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
+  public static void ClickWindow(string title) {
+    var h = FindWindow(null, title); RECT r; GetWindowRect(h, out r);
+    Click((r.L + r.R) / 2, r.B - 30);
+  }
 }
 "@
 $n = 0
@@ -60,11 +67,16 @@ Start-Process $exe -ArgumentList '--settings'
 Start-Sleep 8
 Shot 'settings'
 
+[U]::ClickWindow('Pinwheel settings')
+Start-Sleep 1
+"[before-uia] foreground: $([U]::Fg())"
 [U]::Key(0x41, $false); [U]::Key(0x41, $true)
 Start-Sleep 1
 $root = [System.Windows.Automation.AutomationElement]::RootElement
 $window = FindByName $root 'Pinwheel settings'
 "window found: $($null -ne $window)"
+[U]::Key(0x42, $false); [U]::Key(0x42, $true)
+Start-Sleep 1
 $set = FindByName $window 'Set…'
 "Set button found: $($null -ne $set)"
 if ($set) { ClickElement $set } else { [U]::Click(300, 250) }
