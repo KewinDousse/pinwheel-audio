@@ -1,0 +1,36 @@
+name: Bug
+description: Something does not work as expected.
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what you expected
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version
+      description: Settings > System > About, e.g. Windows 11 24H2.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: App version
+      description: Right-click the executable > Properties > Details.
+  - type: textarea
+    id: devices
+    attributes:
+      label: Audio outputs involved
+      description: USB, Bluetooth, HDMI, virtual device…
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: The end of %LOCALAPPDATA%\SoundDock\logs\sounddock.log, if relevant.
+      render: text
