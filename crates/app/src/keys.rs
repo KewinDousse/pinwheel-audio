@@ -35,7 +35,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 use windows::core::w;
 
-const TIMEOUT_MS: u32 = 15_000;
+pub const TIMEOUT_MS: u32 = 15_000;
 /// Scan code of the right Shift, which Raw Input reports as plain `VK_SHIFT`.
 const SCAN_RIGHT_SHIFT: u16 = 0x36;
 

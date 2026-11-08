@@ -40,14 +40,16 @@ What the automated tests do not cover. The log (`%LOCALAPPDATA%\Pinwheel\logs\pi
 
 ## Settings window
 
-- [ ] Windows in dark mode, then in light mode (Settings > Personalization > Colors): the window follows, text stays readable, switches and slider take the accent colour.
-- [ ] Open each list (language, style, position, add an output): it shows at once, without a fade.
+- [ ] Windows in dark mode, then in light mode (Settings > Personalization > Colors): the window follows, text stays readable, switches, slider and selected choices take the accent colour.
+- [ ] Open each card by clicking its title: it opens at once, and the card open before closes.
+- [ ] Closed, the "Win + wheel" and "General" cards show their current values; change one and the summary follows.
+- [ ] The output Windows uses right now is marked "Default output"; switch with a shortcut and the mark follows within a second.
 - [ ] Make the window narrow: titles and controls do not overlap.
 
 ## Output shortcuts
 
 - [ ] Add two outputs with Ctrl+Alt+1 and Ctrl+Alt+2: each shortcut switches the output and shows it.
-- [ ] Unplug or turn off an output (Bluetooth headset): it stays in the list, marked "disconnected", and its shortcut shows "disconnected".
+- [ ] Unplug or turn off an output (Bluetooth headset): it stays in the list, marked "Disconnected", and its shortcut still shows.
 - [ ] Plug it back: the shortcut works again.
 - [ ] Same shortcut on two outputs: the window says so.
 - [ ] Shortcut already taken by another app: the window says so within a second.

@@ -54,24 +54,30 @@ pub struct Texts {
     pub start_app: &'static str,
     pub language: &'static str,
     pub language_windows: &'static str,
+    pub on: &'static str,
+    pub off: &'static str,
 
     pub outputs_heading: &'static str,
-    pub outputs_help: &'static str,
     pub remove: &'static str,
     pub connected: &'static str,
     pub disconnected: &'static str,
     pub not_found: &'static str,
+    pub default_output: &'static str,
     pub communications: &'static str,
     pub audio_unavailable: &'static str,
     pub add_output: &'static str,
+    pub add: &'static str,
+    pub nothing_to_add: &'static str,
 
     pub shortcut: &'static str,
+    pub set_key: &'static str,
     pub capture_prompt: &'static str,
+    pub capture_cancel_hint: &'static str,
     pub cancel: &'static str,
     pub change: &'static str,
     pub clear: &'static str,
     pub no_shortcut: &'static str,
-    pub choose: &'static str,
+    pub set: &'static str,
     pub capture_failed: &'static str,
     pub duplicate_shortcut: fn(other: &str) -> String,
     pub shortcut_refused: &'static str,
@@ -81,12 +87,10 @@ pub struct Texts {
     pub shortcut_takes_over_key: &'static str,
     pub shift: &'static str,
 
-    pub volume_heading: &'static str,
-    pub volume_help: &'static str,
+    /// Follows a drawn Win key: "+ wheel changes the volume".
+    pub wheel_heading: &'static str,
+    pub wheel_summary: fn(step: i32, style: &str, position: &str) -> String,
     pub volume_step: &'static str,
-    pub percent_suffix: &'static str,
-
-    pub display_heading: &'static str,
     pub style: &'static str,
     pub position: &'static str,
     pub style_bar: &'static str,
@@ -95,11 +99,11 @@ pub struct Texts {
     pub position_top: &'static str,
     pub position_center: &'static str,
     pub position_bottom: &'static str,
-    pub preview: &'static str,
-    pub preview_help: &'static str,
-    pub show: &'static str,
+    pub try_display: &'static str,
 
     pub general_heading: &'static str,
+    pub general_summary: fn(language: &str, starts_at_sign_in: bool) -> String,
+    pub windows_language: &'static str,
     pub startup_checkbox: &'static str,
     pub startup_failed: fn(error: &str) -> String,
     pub startup_disabled_by_windows: &'static str,
@@ -126,24 +130,30 @@ pub const ENGLISH: Texts = Texts {
     start_app: "Start Pinwheel",
     language: "Language",
     language_windows: "Same as Windows",
+    on: "On",
+    off: "Off",
 
-    outputs_heading: "Audio outputs",
-    outputs_help: "An output's shortcut makes it the default output. An unplugged output keeps its shortcut.",
-    remove: "Remove",
-    connected: "connected",
-    disconnected: "disconnected",
-    not_found: "not found",
+    outputs_heading: "Switch outputs with one key",
+    remove: "Remove from the list",
+    connected: "Connected",
+    disconnected: "Disconnected",
+    not_found: "Not found",
+    default_output: "Default output",
     communications: "Also for calls (Teams, Discord…)",
     audio_unavailable: "The Windows audio service is not responding.",
-    add_output: "Add an output…",
+    add_output: "Add an output",
+    add: "Add",
+    nothing_to_add: "Every connected output is already in the list.",
 
     shortcut: "Shortcut",
-    capture_prompt: "Press the keys you want… (Esc to cancel)",
+    set_key: "Set a key",
+    capture_prompt: "Press the keys you want",
+    capture_cancel_hint: "Esc to cancel",
     cancel: "Cancel",
-    change: "Change…",
+    change: "Change",
     clear: "Clear",
-    no_shortcut: "none",
-    choose: "Set…",
+    no_shortcut: "None",
+    set: "Set",
     capture_failed: "Could not capture the shortcut: see the log.",
     duplicate_shortcut: |other| format!("Same shortcut as “{other}”: only the first one works."),
     shortcut_refused: "Windows refuses this shortcut: another app probably uses it.",
@@ -153,13 +163,10 @@ pub const ENGLISH: Texts = Texts {
     shortcut_takes_over_key: "Without Ctrl, Alt or Win, this key will only switch outputs, in every app.",
     shift: "Shift",
 
-    volume_heading: "Volume",
-    volume_help: "Win + mouse wheel changes the volume of the default output.",
-    volume_step: "Step per wheel notch",
-    percent_suffix: "%",
-
-    display_heading: "Display",
-    style: "Style",
+    wheel_heading: "+ wheel changes the volume",
+    wheel_summary: |step, style, position| format!("{step}% per notch · {style}, {}", position.to_lowercase()),
+    volume_step: "Step per notch",
+    style: "Display style",
     position: "Position",
     style_bar: "Thin bar",
     style_pill: "Pill",
@@ -167,11 +174,18 @@ pub const ENGLISH: Texts = Texts {
     position_top: "Top",
     position_center: "Center",
     position_bottom: "Bottom",
-    preview: "Preview",
-    preview_help: "Shows the display at the current volume.",
-    show: "Show",
+    try_display: "Try the display",
 
     general_heading: "General",
+    general_summary: |language, on| {
+        let startup = if on {
+            "Starts when you sign in"
+        } else {
+            "Not started when you sign in"
+        };
+        format!("{language} · {startup}")
+    },
+    windows_language: "Windows language",
     startup_checkbox: "Start Pinwheel when I sign in",
     startup_failed: |error| format!("Could not change the startup entry: {error}"),
     startup_disabled_by_windows: "Turned off in the Windows startup apps. Turning it on here turns it back on.",
@@ -198,24 +212,30 @@ pub const FRENCH: Texts = Texts {
     start_app: "Lancer Pinwheel",
     language: "Langue",
     language_windows: "Celle de Windows",
+    on: "Activé",
+    off: "Désactivé",
 
-    outputs_heading: "Sorties audio",
-    outputs_help: "Le raccourci d'une sortie en fait la sortie par défaut. Une sortie débranchée garde son raccourci.",
-    remove: "Retirer",
-    connected: "connectée",
-    disconnected: "déconnectée",
-    not_found: "introuvable",
+    outputs_heading: "Changer de sortie d'une touche",
+    remove: "Retirer de la liste",
+    connected: "Connectée",
+    disconnected: "Déconnectée",
+    not_found: "Introuvable",
+    default_output: "Sortie par défaut",
     communications: "Aussi pour les appels (Teams, Discord…)",
     audio_unavailable: "Le service audio de Windows ne répond pas.",
-    add_output: "Ajouter une sortie…",
+    add_output: "Ajouter une sortie",
+    add: "Ajouter",
+    nothing_to_add: "Toutes les sorties connectées sont déjà dans la liste.",
 
     shortcut: "Raccourci",
-    capture_prompt: "Appuie sur la combinaison voulue… (Échap pour annuler)",
+    set_key: "Définir une touche",
+    capture_prompt: "Appuie sur la combinaison voulue",
+    capture_cancel_hint: "Échap pour annuler",
     cancel: "Annuler",
-    change: "Changer…",
+    change: "Changer",
     clear: "Supprimer",
-    no_shortcut: "aucun",
-    choose: "Choisir…",
+    no_shortcut: "Aucun",
+    set: "Définir",
     capture_failed: "Capture du raccourci impossible : voir le journal.",
     duplicate_shortcut: |other| format!("Même raccourci que « {other} » : seul le premier fonctionne."),
     shortcut_refused: "Windows refuse ce raccourci : une autre application l'utilise sans doute.",
@@ -225,13 +245,10 @@ pub const FRENCH: Texts = Texts {
     shortcut_takes_over_key: "Sans Ctrl, Alt ni Win, cette touche ne servira plus qu'à changer de sortie, dans toutes les applications.",
     shift: "Maj",
 
-    volume_heading: "Volume",
-    volume_help: "Win + molette règle le volume de la sortie par défaut.",
-    volume_step: "Pas par cran de molette",
-    percent_suffix: " %",
-
-    display_heading: "Affichage",
-    style: "Style",
+    wheel_heading: "+ molette règle le volume",
+    wheel_summary: |step, style, position| format!("{step} % par cran · {style} {}", position.to_lowercase()),
+    volume_step: "Pas par cran",
+    style: "Style de l'affichage",
     position: "Position",
     style_bar: "Barre fine",
     style_pill: "Pilule",
@@ -239,11 +256,18 @@ pub const FRENCH: Texts = Texts {
     position_top: "En haut",
     position_center: "Au centre",
     position_bottom: "En bas",
-    preview: "Aperçu",
-    preview_help: "Montre l'affichage au volume actuel.",
-    show: "Afficher",
+    try_display: "Essayer l'affichage",
 
     general_heading: "Général",
+    general_summary: |language, on| {
+        let startup = if on {
+            "Lancé à l'ouverture de session"
+        } else {
+            "Pas lancé à l'ouverture de session"
+        };
+        format!("{language} · {startup}")
+    },
+    windows_language: "Langue de Windows",
     startup_checkbox: "Lancer Pinwheel à l'ouverture de session",
     startup_failed: |error| format!("Modification du démarrage impossible : {error}"),
     startup_disabled_by_windows: "Désactivé dans les applications de démarrage de Windows. L'activer ici le réactive.",
@@ -277,5 +301,17 @@ mod tests {
     fn formats_with_each_language_typography() {
         assert_eq!((ENGLISH.percent)(40), "40%");
         assert_eq!((FRENCH.percent)(40), "40 %");
+    }
+
+    #[test]
+    fn summarises_the_wheel_settings_as_a_sentence() {
+        assert_eq!(
+            (ENGLISH.wheel_summary)(10, "Pill", "Bottom"),
+            "10% per notch · Pill, bottom"
+        );
+        assert_eq!(
+            (FRENCH.wheel_summary)(10, "Pilule", "En bas"),
+            "10 % par cran · Pilule en bas"
+        );
     }
 }

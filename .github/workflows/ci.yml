@@ -18,3 +18,18 @@ jobs:
       # The app crate is outside default-members, so it is named explicitly.
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
+
+  # The real exe driven by keys and clicks on the runner's desktop.
+  e2e:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build -p pinwheel
+      - run: pwsh -File .github/e2e/e2e.ps1 -Exe target\debug\pinwheel.exe
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e
+          path: e2e-out

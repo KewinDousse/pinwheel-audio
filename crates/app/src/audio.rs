@@ -90,7 +90,7 @@ impl Audio {
         Ok(())
     }
 
-    /// ID of the default output, to check that a switch took effect.
+    /// ID of the default output.
     pub fn default_output_id(&self) -> Result<String> {
         device_id(&self.default_output()?)
     }
