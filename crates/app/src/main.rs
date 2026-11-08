@@ -21,6 +21,8 @@ mod hotkeys;
 #[cfg(windows)]
 mod ipc;
 #[cfg(windows)]
+mod keys;
+#[cfg(windows)]
 mod logging;
 #[cfg(windows)]
 mod osd;

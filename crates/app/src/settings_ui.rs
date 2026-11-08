@@ -7,11 +7,12 @@
 
 use crate::audio::Audio;
 use crate::ipc::{self, InstanceLock, WM_PREVIEW_OSD, WM_RELOAD, wide};
+use crate::keys::{self, Capture, Captured};
 use crate::paths;
 use crate::startup::{self, StartupState};
 use eframe::egui;
 use sounddock_core::devices::{DeviceInfo, Resolution, resolve};
-use sounddock_core::hotkey::{Hotkey, KEYS, key_label};
+use sounddock_core::hotkey::Hotkey;
 use sounddock_core::settings::{self, OsdPosition, OsdStyle, OutputBinding, Settings, duplicate_hotkey};
 use sounddock_core::status::{self, Status};
 use sounddock_core::volume::STEP_RANGE;
@@ -25,6 +26,8 @@ use windows::Win32::UI::WindowsAndMessaging::{
 use windows::core::{PCWSTR, w};
 
 const REFRESH_EVERY: Duration = Duration::from_secs(1);
+/// A capture left running would keep swallowing every key.
+const CAPTURE_TIMEOUT: Duration = Duration::from_secs(15);
 
 pub fn run() {
     let Some(_lock) = InstanceLock::acquire(ipc::SETTINGS_MUTEX) else {
@@ -103,6 +106,14 @@ struct SettingsApp {
     main_running: bool,
     last_refresh: Option<Instant>,
     error: Option<String>,
+    capture: Option<ActiveCapture>,
+}
+
+/// Shortcut being captured for the output at `index`.
+struct ActiveCapture {
+    index: usize,
+    capture: Capture,
+    started: Instant,
 }
 
 impl SettingsApp {
@@ -129,6 +140,39 @@ impl SettingsApp {
             main_running: false,
             last_refresh: None,
             error,
+            capture: None,
+        }
+    }
+
+    fn start_capture(&mut self, index: usize, ctx: &egui::Context) {
+        // Dropping a previous capture stops it first.
+        self.capture = None;
+        let ctx = ctx.clone();
+        match Capture::start(move || ctx.request_repaint()) {
+            Some(capture) => {
+                self.capture = Some(ActiveCapture {
+                    index,
+                    capture,
+                    started: Instant::now(),
+                })
+            }
+            None => self.error = Some("Capture du raccourci impossible : voir le journal.".into()),
+        }
+    }
+
+    fn poll_capture(&mut self, ctx: &egui::Context) {
+        let Some(active) = &self.capture else { return };
+        let index = active.index;
+        match active.capture.poll() {
+            Some(Captured::Hotkey(hotkey)) => {
+                if let Some(output) = self.settings.outputs.get_mut(index) {
+                    output.hotkey = Some(hotkey);
+                }
+                self.capture = None;
+            }
+            Some(Captured::Cancelled) => self.capture = None,
+            None if active.started.elapsed() > CAPTURE_TIMEOUT => self.capture = None,
+            None => ctx.request_repaint_after(Duration::from_millis(250)),
         }
     }
 
@@ -200,6 +244,8 @@ impl SettingsApp {
         ui.add_space(4.0);
 
         let mut remove = None;
+        let mut capture_request = None;
+        let capturing = self.capture.as_ref().map(|c| c.index);
         for index in 0..self.settings.outputs.len() {
             let duplicate_of = duplicate_hotkey(&self.settings.outputs, index).map(|o| o.name.clone());
             let refused = self.status.hotkey_errors.get(&self.settings.outputs[index].id).cloned();
@@ -220,12 +266,24 @@ impl SettingsApp {
                         }
                     });
                 });
-                hotkey_editor(ui, index, &mut output.hotkey);
+                match hotkey_row(ui, output.hotkey.as_ref(), capturing == Some(index)) {
+                    HotkeyAction::Capture => capture_request = Some(Some(index)),
+                    HotkeyAction::StopCapture => capture_request = Some(None),
+                    HotkeyAction::Clear => output.hotkey = None,
+                    HotkeyAction::None => {}
+                }
                 ui.checkbox(&mut output.communications, "Aussi pour les appels (Teams, Discord…)");
                 hotkey_messages(ui, output.hotkey.as_ref(), duplicate_of.as_deref(), refused.as_deref());
             });
         }
+        match capture_request {
+            Some(Some(index)) => self.start_capture(index, ui.ctx()),
+            Some(None) => self.capture = None,
+            None => {}
+        }
         if let Some(index) = remove {
+            // Indexes shift: a capture in progress would land on another output.
+            self.capture = None;
             self.settings.outputs.remove(index);
         }
 
@@ -315,6 +373,7 @@ impl SettingsApp {
 impl eframe::App for SettingsApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.refresh();
+        self.poll_capture(ui.ctx());
         ui.ctx().request_repaint_after(REFRESH_EVERY);
 
         let before = self.settings.clone();
@@ -349,44 +408,43 @@ fn device_state(output: &OutputBinding, devices: &[DeviceInfo]) -> (&'static str
     }
 }
 
-fn hotkey_editor(ui: &mut egui::Ui, index: usize, hotkey: &mut Option<Hotkey>) {
+enum HotkeyAction {
+    None,
+    Capture,
+    StopCapture,
+    Clear,
+}
+
+fn hotkey_row(ui: &mut egui::Ui, hotkey: Option<&Hotkey>, capturing: bool) -> HotkeyAction {
+    let mut action = HotkeyAction::None;
     ui.horizontal(|ui| {
         ui.label("Raccourci :");
-        let mut clear = false;
+        if capturing {
+            ui.strong("Appuie sur la combinaison voulue… (Échap pour annuler)");
+            if ui.button("Annuler").clicked() {
+                action = HotkeyAction::StopCapture;
+            }
+            return;
+        }
         match hotkey {
-            None => {
-                if ui.button("Définir un raccourci").clicked() {
-                    // Ctrl+Alt+1, Ctrl+Alt+2… in the order of the list.
-                    let key = 0x31 + index.min(8) as u16;
-                    *hotkey = Some(Hotkey {
-                        ctrl: true,
-                        alt: true,
-                        shift: false,
-                        win: false,
-                        key,
-                    });
+            Some(hotkey) => {
+                ui.monospace(keys::describe(hotkey));
+                if ui.button("Changer…").clicked() {
+                    action = HotkeyAction::Capture;
+                }
+                if ui.button("Supprimer").clicked() {
+                    action = HotkeyAction::Clear;
                 }
             }
-            Some(hk) => {
-                ui.checkbox(&mut hk.ctrl, "Ctrl");
-                ui.checkbox(&mut hk.alt, "Alt");
-                ui.checkbox(&mut hk.shift, "Maj");
-                ui.checkbox(&mut hk.win, "Win");
-                egui::ComboBox::from_id_salt(("key", index))
-                    .selected_text(key_label(hk.key).unwrap_or("?"))
-                    .width(130.0)
-                    .show_ui(ui, |ui| {
-                        for key in KEYS {
-                            ui.selectable_value(&mut hk.key, key.vk, key.label);
-                        }
-                    });
-                clear = ui.button("Supprimer").on_hover_text("Supprimer ce raccourci").clicked();
+            None => {
+                ui.weak("aucun");
+                if ui.button("Choisir…").clicked() {
+                    action = HotkeyAction::Capture;
+                }
             }
         }
-        if clear {
-            *hotkey = None;
-        }
     });
+    action
 }
 
 fn hotkey_messages(ui: &mut egui::Ui, hotkey: Option<&Hotkey>, duplicate_of: Option<&str>, refused: Option<&str>) {
@@ -402,11 +460,8 @@ fn hotkey_messages(ui: &mut egui::Ui, hotkey: Option<&Hotkey>, duplicate_of: Opt
     } else if let Some(message) = refused {
         ui.colored_label(error, message);
     }
-    if hotkey.uses_win() {
-        ui.colored_label(
-            ui.visuals().warn_fg_color,
-            "Windows réserve beaucoup de raccourcis avec Win : celui-ci risque de ne pas marcher.",
-        );
+    for warning in hotkey.warnings() {
+        ui.colored_label(ui.visuals().warn_fg_color, warning.to_string());
     }
 }
 
