@@ -95,6 +95,7 @@ The window shows little at once, so that it reads at a glance:
 
 - Three groups, apart: the outputs, "Add an output" and "Next output"; a "Win + scroll" card (step, Win + Shift, Win + middle click) and an "On-screen display" card; a "General" card (language, startup, logs) then "About Pinwheel" (version, update check, links to the source code and to a new issue).
 - Each card folds. Closed, an output's card shows what matters day to day: its name, its state, whether it is the default output of Windows (`Audio::default_output_id`, read every second) and its keys. The other cards show their title only: a summary of their values would repeat what opening them shows. A click on the card opens it, and scrolls it into view; one card is open at a time.
+- Closed, the "Next output" card shows its keys, as an output's card does, or "Set a key" when it has none.
 - The rare actions (change or clear a shortcut, the calls option, remove the output) are inside the open card. Remove is at its bottom, away from the header, so that a double click opening the card cannot remove the output.
 - A shortcut's error or warning shows on its card, open or closed, and only when there is one.
 - A newer release shows as a banner at the top, see [ADR 0006](adr/0006-update-check.md).

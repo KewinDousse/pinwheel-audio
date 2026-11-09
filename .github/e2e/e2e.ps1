@@ -213,20 +213,17 @@ $foreground = [U]::ForegroundProcess()
 Check 'Win alone opens Start' ($foreground -match $startMenu) $foreground
 Press 0x1B
 Start-Sleep 1
-# The same with Shift held, for Win + Shift + wheel below.
-ClickAway 'before Win + Shift alone'
-[U]::Key(0x10, $false)
-Press 0x5B
-[U]::Key(0x10, $true)
-Start-Sleep 2
-$foreground = [U]::ForegroundProcess()
-Check 'Win + Shift alone opens Start' ($foreground -match $startMenu) $foreground
-Press 0x1B
-Start-Sleep 1
+
+# Each volume change or mute the hook passes on fails on the runner, which
+# has no audio device: the failures in the log show that it took the event.
+function AudioCalls { if (Test-Path $log) { @(Select-String -Path $log -SimpleMatch 'audio call failed').Count } else { 0 } }
 
 # Win held long enough to repeat, as a physical key does, around `$use`.
+# Windows does not open Start when Shift is held with Win, so Start is
+# only checked without it.
 function WithWinHeld($name, [scriptblock]$use, [switch]$Shift) {
   ClickAway "before $name"
+  $calls = AudioCalls
   if ($Shift) { [U]::Key(0x10, $false) }
   [U]::Key(0x5B, $false)
   for ($i = 0; $i -lt 10; $i++) { Start-Sleep -Milliseconds 33; [U]::Key(0x5B, $false) }
@@ -235,6 +232,8 @@ function WithWinHeld($name, [scriptblock]$use, [switch]$Shift) {
   [U]::Key(0x5B, $true)
   if ($Shift) { [U]::Key(0x10, $true) }
   Start-Sleep 2
+  Check "$name reaches Pinwheel" ((AudioCalls) -gt $calls)
+  if ($Shift) { return }
   $foreground = [U]::ForegroundProcess()
   Check "Start stays closed after $name" ($foreground -notmatch $startMenu) $foreground
   if ($foreground -match $startMenu) { Press 0x1B }

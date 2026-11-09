@@ -30,8 +30,8 @@ pub fn start(main_window: HWND) {
     let main = main_window.0 as isize;
     let spawned = std::thread::Builder::new().name("update-check".into()).spawn(move || {
         let result = latest_release_answer()
-            .map(|json| update::newer_release(&json, env!("CARGO_PKG_VERSION")))
-            .map_err(|e| e.to_string());
+            .map_err(|e| e.to_string())
+            .and_then(|json| update::newer_release(&json, env!("CARGO_PKG_VERSION")));
         *RESULT.lock().unwrap_or_else(PoisonError::into_inner) = Some(result);
         let _ = unsafe { PostMessageW(Some(HWND(main as *mut _)), WM_UPDATE_CHECKED, WPARAM(0), LPARAM(0)) };
     });
