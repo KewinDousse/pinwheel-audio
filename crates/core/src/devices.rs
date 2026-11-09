@@ -45,20 +45,23 @@ pub fn resolve<'a>(id: &str, name: &str, devices: &'a [DeviceInfo]) -> Resolutio
 }
 
 /// Index in `outputs` of the output after the default one, going round the
-/// list and skipping the ones not connected. When the default output is not
-/// in the list, the first connected one. `None` when none is connected.
+/// list and skipping the ones not connected, and those that are the default
+/// device too (an unplugged output can resolve to a connected one of the
+/// same name). When the default output is not in the list, the first
+/// connected one. The default one when no other is connected, `None` when
+/// none is.
 pub fn next_output(outputs: &[OutputBinding], devices: &[DeviceInfo], default_id: Option<&str>) -> Option<usize> {
-    let connected = |output: &OutputBinding| match resolve(&output.id, &output.name, devices) {
+    let device = |output: &OutputBinding| match resolve(&output.id, &output.name, devices) {
         Resolution::Ready(device) | Resolution::Moved(device) => Some(device.id.as_str()),
         Resolution::Unavailable | Resolution::Unknown => None,
     };
-    let current = outputs
-        .iter()
-        .position(|o| connected(o).is_some_and(|id| Some(id) == default_id));
+    let is_default = |output: &OutputBinding| device(output).is_some_and(|id| Some(id) == default_id);
+    let current = outputs.iter().position(is_default);
     let start = current.map_or(0, |i| i + 1);
     (0..outputs.len())
         .map(|offset| (start + offset) % outputs.len())
-        .find(|&i| connected(&outputs[i]).is_some())
+        .find(|&i| device(&outputs[i]).is_some() && !is_default(&outputs[i]))
+        .or(current)
 }
 
 #[cfg(test)]
@@ -149,6 +152,17 @@ mod tests {
         let devices = [device("a", "Casque", true), device("new", "Écran", true)];
         assert_eq!(next_output(&outputs, &devices, Some("new")), Some(0));
         assert_eq!(next_output(&outputs, &devices, Some("a")), Some(1));
+    }
+
+    #[test]
+    fn next_output_skips_an_unplugged_twin_of_the_default() {
+        let outputs = [saved("a", "Casque"), saved("b", "Casque"), saved("c", "Haut-parleurs")];
+        let devices = [
+            device("a", "Casque", true),
+            device("b", "Casque", false),
+            device("c", "Haut-parleurs", true),
+        ];
+        assert_eq!(next_output(&outputs, &devices, Some("a")), Some(2));
     }
 
     #[test]

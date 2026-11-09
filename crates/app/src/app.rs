@@ -351,7 +351,7 @@ impl App {
     fn on_update_checked(&mut self) {
         let result = update::take_result();
         match &result {
-            Some(Err(update::Failure::NoAnswer(_))) => {
+            Some(Err(update::Failure::Offline(_))) => {
                 unsafe { SetTimer(Some(self.hwnd), TIMER_UPDATE_RETRY, UPDATE_RETRY_MS, None) };
             }
             Some(_) => {

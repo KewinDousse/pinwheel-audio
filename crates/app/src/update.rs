@@ -8,35 +8,50 @@ use std::ffi::c_void;
 use std::sync::{Mutex, PoisonError};
 use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
 use windows::Win32::Networking::WinHttp::{
-    INTERNET_DEFAULT_HTTPS_PORT, WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_FLAG_SECURE, WINHTTP_QUERY_FLAG_NUMBER,
-    WINHTTP_QUERY_STATUS_CODE, WinHttpCloseHandle, WinHttpConnect, WinHttpOpen, WinHttpOpenRequest,
-    WinHttpQueryHeaders, WinHttpReadData, WinHttpReceiveResponse, WinHttpSendRequest, WinHttpSetTimeouts,
+    ERROR_WINHTTP_CANNOT_CONNECT, ERROR_WINHTTP_CONNECTION_ERROR, ERROR_WINHTTP_NAME_NOT_RESOLVED,
+    ERROR_WINHTTP_TIMEOUT, INTERNET_DEFAULT_HTTPS_PORT, WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_FLAG_SECURE,
+    WINHTTP_QUERY_FLAG_NUMBER, WINHTTP_QUERY_STATUS_CODE, WinHttpCloseHandle, WinHttpConnect, WinHttpOpen,
+    WinHttpOpenRequest, WinHttpQueryHeaders, WinHttpReadData, WinHttpReceiveResponse, WinHttpSendRequest,
+    WinHttpSetTimeouts,
 };
 use windows::Win32::UI::WindowsAndMessaging::PostMessageW;
-use windows::core::{PCWSTR, w};
+use windows::core::{HRESULT, PCWSTR, w};
 
 /// A newer release, or `None` when this one is the latest.
 pub type CheckResult = Result<Option<Release>, Failure>;
 
 pub enum Failure {
-    /// No network yet, a timeout: worth trying again soon.
-    NoAnswer(String),
-    /// An answer that is not the release: trying again soon would get the same.
-    BadAnswer(String),
+    /// GitHub out of reach (no network yet, a timeout): worth trying again soon.
+    Offline(String),
+    /// Anything else, which trying again soon would meet again: a TLS
+    /// failure, an error status, an answer that is not a release.
+    Failed(String),
 }
 
 impl std::fmt::Display for Failure {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            Self::NoAnswer(e) => write!(f, "no answer: {e}"),
-            Self::BadAnswer(e) => f.write_str(e),
+            Self::Offline(e) => write!(f, "GitHub out of reach: {e}"),
+            Self::Failed(e) => f.write_str(e),
         }
     }
 }
 
 impl From<windows::core::Error> for Failure {
     fn from(e: windows::core::Error) -> Self {
-        Self::NoAnswer(e.to_string())
+        let offline = [
+            ERROR_WINHTTP_NAME_NOT_RESOLVED,
+            ERROR_WINHTTP_CANNOT_CONNECT,
+            ERROR_WINHTTP_CONNECTION_ERROR,
+            ERROR_WINHTTP_TIMEOUT,
+        ]
+        .into_iter()
+        .any(|code| e.code() == HRESULT::from_win32(code));
+        if offline {
+            Self::Offline(e.to_string())
+        } else {
+            Self::Failed(e.to_string())
+        }
     }
 }
 
@@ -50,7 +65,7 @@ pub fn start(main_window: HWND) {
     let main = main_window.0 as isize;
     let spawned = std::thread::Builder::new().name("update-check".into()).spawn(move || {
         let result = latest_release_answer()
-            .and_then(|json| update::newer_release(&json, env!("CARGO_PKG_VERSION")).map_err(Failure::BadAnswer));
+            .and_then(|json| update::newer_release(&json, env!("CARGO_PKG_VERSION")).map_err(Failure::Failed));
         *RESULT.lock().unwrap_or_else(PoisonError::into_inner) = Some(result);
         let _ = unsafe { PostMessageW(Some(HWND(main as *mut _)), WM_UPDATE_CHECKED, WPARAM(0), LPARAM(0)) };
     });
@@ -127,7 +142,7 @@ fn latest_release_answer() -> Result<String, Failure> {
         )
     }?;
     if status != 200 {
-        return Err(Failure::BadAnswer(format!("GitHub answered {status}")));
+        return Err(Failure::Failed(format!("GitHub answered {status}")));
     }
 
     let mut body = Vec::new();
@@ -140,8 +155,8 @@ fn latest_release_answer() -> Result<String, Failure> {
         }
         body.extend_from_slice(&buffer[..read as usize]);
         if body.len() > MAX_ANSWER {
-            return Err(Failure::BadAnswer("the answer is too large".into()));
+            return Err(Failure::Failed("the answer is too large".into()));
         }
     }
-    String::from_utf8(body).map_err(|e| Failure::BadAnswer(e.to_string()))
+    String::from_utf8(body).map_err(|e| Failure::Failed(e.to_string()))
 }
