@@ -42,8 +42,11 @@ const TIMER_HOTKEY_RETRY: usize = 20;
 const TIMER_TRAY_RETRY: usize = 21;
 const TIMER_CAPTURE_END: usize = 22;
 const TIMER_UPDATE_CHECK: usize = 23;
+const TIMER_UPDATE_RETRY: usize = 24;
 const HOTKEY_RETRY_MS: u32 = 30_000;
 const UPDATE_CHECK_MS: u32 = 24 * 60 * 60 * 1000;
+/// At sign-in, the network is often not ready yet.
+const UPDATE_RETRY_MS: u32 = 15 * 60 * 1000;
 const TRAY_RETRY_MS: u32 = 2_000;
 /// Longer than a capture lasts: the shortcuts come back even if the settings
 /// window closes without saying so.
@@ -346,7 +349,17 @@ impl App {
     }
 
     fn on_update_checked(&mut self) {
-        match update::take_result() {
+        let result = update::take_result();
+        match &result {
+            Some(Err(_)) => {
+                unsafe { SetTimer(Some(self.hwnd), TIMER_UPDATE_RETRY, UPDATE_RETRY_MS, None) };
+            }
+            Some(Ok(_)) => {
+                let _ = unsafe { KillTimer(Some(self.hwnd), TIMER_UPDATE_RETRY) };
+            }
+            None => {}
+        }
+        match result {
             // Turned off while the check ran.
             Some(_) if !self.settings.check_updates => {}
             Some(Ok(Some(release))) => {
@@ -426,6 +439,12 @@ impl App {
             }
             TIMER_CAPTURE_END => self.resume_hotkeys(),
             TIMER_UPDATE_CHECK if self.settings.check_updates => update::start(self.hwnd),
+            TIMER_UPDATE_RETRY => {
+                let _ = unsafe { KillTimer(Some(self.hwnd), TIMER_UPDATE_RETRY) };
+                if self.settings.check_updates {
+                    update::start(self.hwnd);
+                }
+            }
             TIMER_TRAY_RETRY if self.tray.show() => {
                 let _ = unsafe { KillTimer(Some(self.hwnd), TIMER_TRAY_RETRY) };
             }

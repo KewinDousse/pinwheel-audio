@@ -9,7 +9,7 @@ The background process asks GitHub for the latest release at startup, then every
 - **Page**: the release page (`html_url`) is shown only when it is on the repository's releases, since it opens in the browser.
 - **Where it shows**: a banner at the top of the settings window ("Pinwheel x.y.z is available", "See the release"), and a first item in the tray menu that opens the page. The background process writes the release in `status.json` for the settings window.
 - **Setting**: "Check for updates", in "About Pinwheel", on by default. Turned off, no request is made and the banner and menu item go away. Turned on, a check runs at once.
-- **Failure**: a failed check (no network, a proxy that needs a login, a GitHub error) is logged, and what an earlier check found still holds.
+- **Failure**: a failed check (no network, a proxy that needs a login, a GitHub error, an answer that is not a release) is logged, and what an earlier check found still holds. It is tried again 15 minutes later, until a check succeeds: at sign-in, the network is often not ready yet.
 
 ## Reasons
 

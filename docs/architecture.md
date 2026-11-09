@@ -73,7 +73,7 @@ Pinwheel has no installer. The background process writes `Pinwheel.lnk` in the u
 
 ## Started notice
 
-When the settings window does not open at startup (every start but the first), the display shows "Pinwheel started" with the app icon, so a start is never silent. The icon comes from `res/pinwheel.ico` (`crates/app/src/icon.rs`), and the renderer draws the smallest of its images that covers the needed size.
+When the settings window does not open at startup (every start but the first), the display shows "Pinwheel started" with the app icon, so that a start is not silent. The icon comes from `res/pinwheel.ico` (`crates/app/src/icon.rs`), and the renderer draws the smallest of its images that covers the needed size.
 
 ## Settings window start
 
@@ -134,7 +134,7 @@ Texts come from `crates/core/src/i18n.rs`, in the language of the settings or el
 
 The "On-screen display" card sets how it shows (`OsdSettings`):
 
-- **Show**: off, nothing shows, not even a notice such as a disconnected output. "Try the display" is then disabled.
+- **Show**: off, nothing shows, not even a notice such as a disconnected output or "Pinwheel started". "Try the display" is then disabled.
 - **Screen**: the one under the mouse pointer, or the main screen (`MonitorFromPoint` at the origin).
 - **Duration**: from 0.5 to 5 s before the 300 ms fade. **Opacity**: from 20 to 100%, the alpha the window starts its fade from.
 - **Full screen**: when "Hide over full-screen apps and games" is on, nothing shows while `SHQueryUserNotificationState` reports a full-screen app, a Direct3D game or presentation mode. It is the state Windows gives apps that want to stay quiet, and covers a browser video in full screen.
