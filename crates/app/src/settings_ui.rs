@@ -868,7 +868,7 @@ fn hotkey_messages(
 }
 
 fn window_hwnd(cc: &eframe::CreationContext) -> Option<HWND> {
-    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+    use wgpu::rwh::{HasWindowHandle, RawWindowHandle};
     match cc.window_handle().ok()?.as_raw() {
         RawWindowHandle::Win32(handle) => Some(HWND(handle.hwnd.get() as *mut _)),
         _ => None,

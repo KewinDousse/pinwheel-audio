@@ -109,9 +109,10 @@ function ClickAway($when) {
 }
 # Windows cascades new windows, sometimes behind the taskbar, where a click
 # opens Search. Clear of the taskbar, and of (10, 10) where ClickAway clicks.
-function MoveSettings($x, $y) {
-  # SWP_NOSIZE | SWP_NOZORDER
-  [U]::SetWindowPos([U]::FindWindow([NullString]::Value, $title), [IntPtr]::Zero, $x, $y, 0, 0, 5) | Out-Null
+function MoveSettings($x, $y, $width = 0, $height = 0) {
+  # SWP_NOZORDER, plus SWP_NOSIZE without a size.
+  $flags = if ($width) { 4 } else { 5 }
+  [U]::SetWindowPos([U]::FindWindow([NullString]::Value, $title), [IntPtr]::Zero, $x, $y, $width, $height, $flags) | Out-Null
   Start-Sleep 1
 }
 function OpenSettings([switch]$WherePlaced) {
@@ -209,7 +210,7 @@ if ($foreground -match $startMenu) { Press 0x1B }
 # place for the next opening, here in the dark theme.
 $placeFile = Join-Path $env:LOCALAPPDATA 'Pinwheel\window.txt'
 $moving = Get-Date
-MoveSettings 260 20
+MoveSettings 260 20 720 660
 $before = WindowRect
 Start-Sleep 2
 Check 'window place saved after a move' ((Test-Path $placeFile) -and (Get-Item $placeFile).LastWriteTime -ge $moving)

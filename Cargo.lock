@@ -2246,7 +2246,6 @@ dependencies = [
  "embed-resource",
  "log",
  "pinwheel-core",
- "raw-window-handle",
  "tiny-skia",
  "wgpu",
  "windows",

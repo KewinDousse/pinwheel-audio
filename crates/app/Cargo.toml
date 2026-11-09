@@ -27,8 +27,6 @@ tiny-skia = "0.12.0"
 
 # Only the app's Windows code uses them, and the WinRT parts do not build elsewhere.
 [target.'cfg(windows)'.dependencies]
-# The version eframe uses, for the settings window's HWND.
-raw-window-handle = "0.6.2"
 # eframe's wgpu, only for its dx12 feature: keep the version eframe depends
 # on, or eframe's own wgpu ends up with no backend and the window fails.
 wgpu = { version = "30.0.1", default-features = false, features = ["dx12"] }

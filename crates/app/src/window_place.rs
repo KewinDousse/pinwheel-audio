@@ -36,6 +36,17 @@ pub fn restore(hwnd: HWND) {
             return;
         }
     }
+    // Windows moves a rectangle that is off every screen onto one; any other
+    // difference is worth knowing about.
+    if let Some(placed) = current(hwnd)
+        && placed != rect
+    {
+        log::warn!(
+            "the settings window is at {:?} instead of {:?}",
+            (placed.left, placed.top, placed.right, placed.bottom),
+            (rect.left, rect.top, rect.right, rect.bottom)
+        );
+    }
 }
 
 pub fn save(rect: RECT) {
