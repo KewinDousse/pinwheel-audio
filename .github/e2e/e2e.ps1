@@ -222,7 +222,7 @@ function AudioCalls { if (Test-Path $log) { @(Select-String -Path $log -SimpleMa
 # Win held long enough to repeat, as a physical key does, around `$use`.
 # Windows does not open Start when Shift is held with Win, so Start is
 # only checked without it.
-function WithWinHeld($name, [scriptblock]$use, [switch]$Shift, [switch]$LeftToOthers) {
+function WithWinHeld($name, [scriptblock]$use, [switch]$Shift, [switch]$Ignored) {
   ClickAway "before $name"
   $calls = AudioCalls
   if ($Shift) { [U]::Key(0x10, $false) }
@@ -233,8 +233,8 @@ function WithWinHeld($name, [scriptblock]$use, [switch]$Shift, [switch]$LeftToOt
   [U]::Key(0x5B, $true)
   if ($Shift) { [U]::Key(0x10, $true) }
   Start-Sleep 2
-  if ($LeftToOthers) {
-    Check "$name left to other apps" ((AudioCalls) -eq $calls)
+  if ($Ignored) {
+    Check "$name ignored by Pinwheel" ((AudioCalls) -eq $calls)
   } else {
     Check "$name reaches Pinwheel" ((AudioCalls) -gt $calls)
   }
@@ -261,7 +261,7 @@ function SetFineStep($on) {
   Start-Sleep 2
 }
 SetFineStep $false
-WithWinHeld 'Win + Shift + wheel, turned off,' { [U]::Wheel(120) } -Shift -LeftToOthers
+WithWinHeld 'Win + Shift + wheel, turned off,' { [U]::Wheel(120) } -Shift -Ignored
 WithWinHeld 'Win + wheel, Win + Shift + scroll off,' { [U]::Wheel(120) }
 SetFineStep $true
 

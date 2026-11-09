@@ -13,7 +13,7 @@ pub struct Status {
     pub hotkey_errors: BTreeMap<String, String>,
     /// The Windows error for the "next output" shortcut.
     pub next_output_error: Option<String>,
-    /// A newer release, found by the last check that got an answer.
+    /// A newer release, found by the last check that succeeded.
     pub update: Option<Release>,
 }
 
