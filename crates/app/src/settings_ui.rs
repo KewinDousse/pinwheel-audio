@@ -10,7 +10,7 @@ use crate::ipc::{self, InstanceLock, WM_PREVIEW_OSD, WM_RELOAD, wide};
 use crate::keys::{self, Capture, Captured};
 use crate::settings_theme::{self as theme, Palette, Themes};
 use crate::startup::{self, StartupState};
-use crate::{icon, language, paths};
+use crate::{icon, language, paths, window_place};
 use eframe::egui::{self, Margin, RichText};
 use pinwheel_core::devices::{DeviceInfo, Resolution, resolve};
 use pinwheel_core::hotkey::Hotkey;
@@ -20,9 +20,9 @@ use pinwheel_core::status::{self, Status};
 use pinwheel_core::volume::STEP_RANGE;
 use std::path::PathBuf;
 use std::time::{Duration, Instant, SystemTime};
-use windows::Win32::Foundation::FILETIME;
+use windows::Win32::Foundation::{FILETIME, HWND, RECT};
 use windows::Win32::System::Com::{COINIT_APARTMENTTHREADED, CoInitializeEx};
-use windows::Win32::System::SystemInformation::GetSystemTimeAsFileTime;
+use windows::Win32::System::SystemInformation::GetSystemTimePreciseAsFileTime;
 use windows::Win32::System::Threading::{GetCurrentProcess, GetProcessTimes};
 use windows::Win32::UI::Shell::ShellExecuteW;
 use windows::Win32::UI::WindowsAndMessaging::{
@@ -56,13 +56,17 @@ pub fn run() {
     }
     let options = eframe::NativeOptions {
         viewport,
-        // eframe keeps the window's position and size there, and puts the
-        // window back on a screen when that one is gone.
-        persistence_path: Some(paths::window_file()),
         ..Default::default()
     };
     let setup = Box::new(|cc: &eframe::CreationContext| {
+        let mut app = app;
         app.themes.install(&cc.egui_ctx);
+        // The window stays hidden until its first frame is drawn.
+        app.hwnd = window_hwnd(cc);
+        if let Some(hwnd) = app.hwnd {
+            window_place::restore(hwnd);
+            app.place = window_place::current(hwnd);
+        }
         Ok(Box::new(app) as Box<dyn eframe::App>)
     });
     if let Err(e) = eframe::run_native(title, options, setup) {
@@ -125,8 +129,12 @@ struct SettingsApp {
     reveal: bool,
     /// Language of the window title, updated when the setting changes.
     title_lang: Lang,
-    /// The first frame is logged with the time it took to come.
-    first_frame_logged: bool,
+    /// The settings window, to keep its place.
+    hwnd: Option<HWND>,
+    /// The window's normal rectangle as last saved.
+    place: Option<RECT>,
+    /// The time the window took to show is logged once.
+    shown_logged: bool,
     themes: Themes,
 }
 
@@ -172,7 +180,9 @@ impl SettingsApp {
             open: None,
             reveal: false,
             title_lang: lang,
-            first_frame_logged: false,
+            hwnd: None,
+            place: None,
+            shown_logged: false,
             themes: Themes::new(),
         }
     }
@@ -248,6 +258,7 @@ impl SettingsApp {
                 }
             }
         }
+        self.save_place();
         self.status = status::load(&paths::status_file());
         self.startup = startup::state();
         self.main_running = unsafe { FindWindowW(ipc::MAIN_CLASS, PCWSTR::null()) }.is_ok();
@@ -283,6 +294,18 @@ impl SettingsApp {
                 log::error!("saving the settings failed: {e}");
                 self.error = Some((self.texts().settings_save_failed)(&e.to_string()));
             }
+        }
+    }
+
+    /// Once a second and on exit: a move or a resize shows here soon enough,
+    /// and the normal rectangle stays right while the window is minimized.
+    fn save_place(&mut self) {
+        let Some(place) = self.hwnd.and_then(window_place::current) else {
+            return;
+        };
+        if self.place != Some(place) {
+            self.place = Some(place);
+            window_place::save(place);
         }
     }
 
@@ -636,21 +659,28 @@ impl SettingsApp {
 }
 
 impl eframe::App for SettingsApp {
-    /// Only the window's place is kept, not egui's state.
-    fn persist_egui_memory(&self) -> bool {
-        false
+    fn on_exit(&mut self) {
+        self.save_place();
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        if !self.first_frame_logged {
-            self.first_frame_logged = true;
-            match since_process_start() {
-                Some(elapsed) => log::info!(
-                    "settings window ready {} ms after the process started",
-                    elapsed.as_millis()
-                ),
-                None => log::info!("settings window ready"),
+        // eframe shows the window once the first frame is drawn, so the
+        // second one starts with the window on screen.
+        match ui.ctx().cumulative_frame_nr() {
+            0 => ui.ctx().request_repaint(),
+            1 if !self.shown_logged => {
+                self.shown_logged = true;
+                match since_process_start() {
+                    Some(elapsed) => {
+                        log::info!(
+                            "settings window shown {} ms after the process started",
+                            elapsed.as_millis()
+                        )
+                    }
+                    None => log::info!("settings window shown"),
+                }
             }
+            _ => {}
         }
         self.refresh();
         ui.ctx().request_repaint_after(REFRESH_EVERY);
@@ -837,13 +867,21 @@ fn hotkey_messages(
     }
 }
 
+fn window_hwnd(cc: &eframe::CreationContext) -> Option<HWND> {
+    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+    match cc.window_handle().ok()?.as_raw() {
+        RawWindowHandle::Win32(handle) => Some(HWND(handle.hwnd.get() as *mut _)),
+        _ => None,
+    }
+}
+
 /// From the creation of this process, which counts what loading the
 /// executable costs.
 fn since_process_start() -> Option<Duration> {
     let mut creation = FILETIME::default();
     let (mut exit, mut kernel, mut user) = (FILETIME::default(), FILETIME::default(), FILETIME::default());
     unsafe { GetProcessTimes(GetCurrentProcess(), &mut creation, &mut exit, &mut kernel, &mut user) }.ok()?;
-    let now = unsafe { GetSystemTimeAsFileTime() };
+    let now = unsafe { GetSystemTimePreciseAsFileTime() };
     let ticks = |t: FILETIME| (u64::from(t.dwHighDateTime) << 32) | u64::from(t.dwLowDateTime);
     // FILETIME counts 100 ns ticks.
     Some(Duration::from_nanos(ticks(now).checked_sub(ticks(creation))? * 100))

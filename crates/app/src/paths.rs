@@ -20,10 +20,10 @@ pub fn status_file() -> PathBuf {
     known_dir("LOCALAPPDATA").join("status.json")
 }
 
-/// `%LOCALAPPDATA%\Pinwheel\window.ron`: where the settings window was
+/// `%LOCALAPPDATA%\Pinwheel\window.txt`: where the settings window was
 /// last, which only makes sense on this machine's screens.
 pub fn window_file() -> PathBuf {
-    known_dir("LOCALAPPDATA").join("window.ron")
+    known_dir("LOCALAPPDATA").join("window.txt")
 }
 
 /// `%LOCALAPPDATA%\Pinwheel\logs`.

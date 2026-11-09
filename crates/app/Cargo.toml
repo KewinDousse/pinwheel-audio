@@ -9,15 +9,15 @@ repository.workspace = true
 
 [dependencies]
 ab_glyph = "0.2.32"
-# DirectX 12 only: wgpu would otherwise try Vulkan and OpenGL first at each
-# opening of the settings window. OpenGL alone is not an option, as Windows
-# can lack OpenGL 3.3 (remote sessions, basic display driver).
+# DirectX 12 only (see the wgpu dependency): with its default backends, wgpu
+# also starts Vulkan and OpenGL at each opening of the settings window.
+# OpenGL alone is not an option, as Windows can lack OpenGL 3.3 (remote
+# sessions, basic display driver).
 eframe = { version = "0.37.0", default-features = false, features = [
     "accesskit",
     "clipboard",
     "default_fonts",
     "links",
-    "persistence",
     "system_fonts",
     "wgpu_no_default_features",
 ] }
@@ -27,6 +27,10 @@ tiny-skia = "0.12.0"
 
 # Only the app's Windows code uses them, and the WinRT parts do not build elsewhere.
 [target.'cfg(windows)'.dependencies]
+# The version eframe uses, for the settings window's HWND.
+raw-window-handle = "0.6.2"
+# eframe's wgpu, only for its dx12 feature: keep the version eframe depends
+# on, or eframe's own wgpu ends up with no backend and the window fails.
 wgpu = { version = "30.0.1", default-features = false, features = ["dx12"] }
 windows-core = "0.62.2"
 

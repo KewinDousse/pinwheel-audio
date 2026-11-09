@@ -22,6 +22,7 @@ public static class U {
   [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern IntPtr FindWindow(string c, string t);
   [StructLayout(LayoutKind.Sequential)] public struct RECT { public int L, T, R, B; }
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
+  [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int cmd);
   [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint flags);
   public static string ForegroundProcess() {
     uint pid; GetWindowThreadProcessId(GetForegroundWindow(), out pid);
@@ -125,7 +126,7 @@ function LogHas($text) { (Test-Path $log) -and (Select-String -Path $log -Simple
 $dir = Join-Path $env:APPDATA 'Pinwheel'
 New-Item -ItemType Directory -Force $dir | Out-Null
 $settingsFile = Join-Path $dir 'settings.json'
-# Enough outputs that the General card, open, goes past the window's bottom.
+# Enough outputs that the About card, open, goes past the window's bottom.
 '{"version":1,"language":"english","outputs":[{"id":"e2e","name":"Test output"},{"id":"e2e-2","name":"Speakers"},{"id":"e2e-3","name":"Headset"},{"id":"e2e-4","name":"Monitor"}]}' | Set-Content $settingsFile
 
 # The background process.
@@ -204,13 +205,21 @@ $foreground = [U]::ForegroundProcess()
 Check 'Start stays closed after Win + wheel' ($foreground -notmatch $startMenu) $foreground
 if ($foreground -match $startMenu) { Press 0x1B }
 
-# Closed, the window keeps its place for the next opening, here in the dark
-# theme.
+# Closed while minimized, as from the taskbar, the window keeps its normal
+# place for the next opening, here in the dark theme.
+$placeFile = Join-Path $env:LOCALAPPDATA 'Pinwheel\window.txt'
+$moving = Get-Date
 MoveSettings 260 20
 $before = WindowRect
-Get-Process pinwheel | Where-Object { $_.MainWindowTitle -eq $title } | ForEach-Object { $_.CloseMainWindow() | Out-Null }
 Start-Sleep 2
-Check 'window place saved' (Test-Path (Join-Path $env:LOCALAPPDATA 'Pinwheel\window.ron'))
+Check 'window place saved after a move' ((Test-Path $placeFile) -and (Get-Item $placeFile).LastWriteTime -ge $moving)
+$settingsProcess = Get-Process pinwheel | Where-Object { $_.MainWindowTitle -eq $title }
+# SW_MINIMIZE
+[U]::ShowWindow([U]::FindWindow([NullString]::Value, $title), 6) | Out-Null
+Start-Sleep 2
+$settingsProcess | ForEach-Object { $_.CloseMainWindow() | Out-Null }
+$settingsProcess | Wait-Process -Timeout 10 -ErrorAction SilentlyContinue
+Check 'settings window closes' ([U]::FindWindow([NullString]::Value, $title) -eq [IntPtr]::Zero)
 Set-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize' AppsUseLightTheme 0
 OpenSettings -WherePlaced
 $after = WindowRect
@@ -222,9 +231,9 @@ Check 'the window opens where it was closed' $same $moved
 if (ClickOn 'Test output') { Shot 'dark-output-open' }
 if (ClickOn '+ wheel changes the volume') { Shot 'dark-wheel-open' }
 
-Check 'opening time logged' (LogHas 'settings window ready')
+Check 'opening time logged' (LogHas 'settings window shown')
 if (Test-Path $log) {
-  Select-String -Path $log -SimpleMatch 'settings window ready' | ForEach-Object { Write-Host "      $($_.Line)" }
+  Select-String -Path $log -SimpleMatch 'settings window shown' | ForEach-Object { Write-Host "      $($_.Line)" }
   Copy-Item $log $out
 }
 Get-Process pinwheel -ErrorAction SilentlyContinue | Stop-Process

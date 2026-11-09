@@ -46,6 +46,8 @@ mod startup;
 mod thread;
 #[cfg(windows)]
 mod tray;
+#[cfg(windows)]
+mod window_place;
 
 #[cfg(windows)]
 fn main() {

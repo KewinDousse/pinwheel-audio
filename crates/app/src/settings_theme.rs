@@ -468,14 +468,9 @@ pub fn warning_banner(ui: &mut egui::Ui, palette: &Palette, add: impl FnOnce(&mu
 /// A key of a shortcut, drawn as a keycap as high as a button. Its size is
 /// fixed, so that it does not stretch to the height of its line.
 pub fn keycap(ui: &mut egui::Ui, palette: &Palette, text: &str) {
-    let color = if ui.is_enabled() {
-        palette.text
-    } else {
-        palette.secondary
-    };
     let galley = ui
         .painter()
-        .layout_no_wrap(text.to_owned(), TextStyle::Body.resolve(ui.style()), color);
+        .layout_no_wrap(text.to_owned(), TextStyle::Body.resolve(ui.style()), palette.text);
     let size = egui::vec2(galley.size().x + 16.0, ui.spacing().interact_size.y);
     let (rect, response) = ui.allocate_exact_size(size, egui::Sense::hover());
     response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, ui.is_enabled(), text));
@@ -489,7 +484,7 @@ pub fn keycap(ui: &mut egui::Ui, palette: &Palette, text: &str) {
             stroke,
             StrokeKind::Inside,
         );
-        painter.galley(rect.center() - galley.size() / 2.0, galley, color);
+        painter.galley(rect.center() - galley.size() / 2.0, galley, palette.text);
     }
 }
 

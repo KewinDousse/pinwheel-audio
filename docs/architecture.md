@@ -55,10 +55,13 @@ When the settings window does not open at startup (every start but the first), t
 
 ## Settings window start
 
-Each opening starts a process, so the window's start time is what the user waits for. The log gives it ("settings window ready N ms after the process started").
+Each opening starts a process, so the window's start time is what the user waits for. The log gives it ("settings window shown N ms after the process started").
 
-- wgpu is built with DirectX 12 only (`crates/app/Cargo.toml`): with its default backends, it tries Vulkan and OpenGL first at each start. OpenGL alone (eframe's `glow`) is not an option, as Windows can lack OpenGL 3.3 (remote sessions, basic display driver, the CI runner).
-- eframe keeps the window's position and size in `%LOCALAPPDATA%\Pinwheel\window.ron`, and puts the window back on a screen when that one is gone. The file is local, as screens differ from one machine to the next.
+- wgpu is built with DirectX 12 only (`crates/app/Cargo.toml`): with its default backends, it also starts Vulkan and OpenGL at each opening. OpenGL alone (eframe's `glow`) is not an option, as Windows can lack OpenGL 3.3 (remote sessions, basic display driver, the CI runner). Without a DirectX 12 driver, wgpu falls back to WARP, Windows' software renderer, and the log says "Software rasterizer detected".
+
+## Settings window place
+
+The window opens where it was closed, with the same size (`crates/app/src/window_place.rs`). Windows' window placement gives the normal rectangle even while the window is minimized or maximized, where its current rectangle is off-screen or covers the screen. The window saves it once a second when it changed, and on exit, in `%LOCALAPPDATA%\Pinwheel\window.txt`; the file is local, as screens differ from one machine to the next. At the next opening, the rectangle is set back while the window is still hidden, twice so that a screen of another scale does not scale the size, and Windows moves it onto a screen if that one is gone.
 
 ## Settings window look
 

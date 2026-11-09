@@ -13,6 +13,6 @@ The app is written in Rust, with `windows-rs` for the Windows APIs, `egui`/`efra
 ## Consequences
 
 - The settings window does not look native (egui).
-- The executable weighs about 14 MB, mostly because of egui's renderer (wgpu). The background process does not use it.
+- The executable weighs about 13 MB, mostly because of egui's renderer (wgpu). The background process does not use it.
 - The display is drawn by hand rather than described in a UI language.
 - The settings window runs in a separate process, because egui (through winit) wants to own the main thread's message loop, which the background process already uses.

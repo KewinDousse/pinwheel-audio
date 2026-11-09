@@ -61,7 +61,7 @@ If you use Volume2, quit it and remove it from startup: with both running, Win +
 | `%APPDATA%\Pinwheel\settings.json` | Settings |
 | `%LOCALAPPDATA%\Pinwheel\logs\pinwheel.log` | Log ("Open folder" next to Logs, in the General card) |
 | `%LOCALAPPDATA%\Pinwheel\status.json` | Shortcuts Windows refused, read by the settings window |
-| `%LOCALAPPDATA%\Pinwheel\window.ron` | Position and size of the settings window |
+| `%LOCALAPPDATA%\Pinwheel\window.txt` | Position and size of the settings window |
 
 An unreadable settings file is renamed to `settings.json.<timestamp>.bak` instead of being overwritten.
 
