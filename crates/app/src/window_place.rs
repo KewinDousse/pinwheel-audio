@@ -6,29 +6,34 @@
 //! every screen onto one.
 
 use crate::paths;
-use windows::Win32::Foundation::{HWND, RECT};
-use windows::Win32::Graphics::Gdi::{MONITOR_DEFAULTTONULL, MonitorFromRect};
+use windows::Win32::Foundation::{HWND, POINT, RECT};
+use windows::Win32::Graphics::Gdi::{
+    GetMonitorInfoW, MONITOR_DEFAULTTONULL, MONITOR_DEFAULTTOPRIMARY, MONITORINFO, MonitorFromPoint, MonitorFromRect,
+};
 use windows::Win32::UI::WindowsAndMessaging::{GetWindowPlacement, SW_HIDE, SetWindowPlacement, WINDOWPLACEMENT};
 
 /// The normal rectangle of `hwnd`, in workspace coordinates.
 pub fn current(hwnd: HWND) -> Option<RECT> {
+    placement(hwnd).map(|p| p.rcNormalPosition)
+}
+
+fn placement(hwnd: HWND) -> Option<WINDOWPLACEMENT> {
     let mut placement = WINDOWPLACEMENT {
         length: size_of::<WINDOWPLACEMENT>() as u32,
         ..Default::default()
     };
     unsafe { GetWindowPlacement(hwnd, &mut placement) }.ok()?;
-    Some(placement.rcNormalPosition)
+    Some(placement)
 }
 
 /// Puts the still hidden `hwnd` where the window was last.
 pub fn restore(hwnd: HWND) {
     let Some(rect) = load() else { return };
-    let placement = WINDOWPLACEMENT {
-        length: size_of::<WINDOWPLACEMENT>() as u32,
-        showCmd: SW_HIDE.0 as u32,
-        rcNormalPosition: rect,
-        ..Default::default()
-    };
+    // From the window's own placement, so that its minimized and maximized
+    // positions stay Windows' choice rather than (0, 0).
+    let Some(mut placement) = placement(hwnd) else { return };
+    placement.showCmd = SW_HIDE.0 as u32;
+    placement.rcNormalPosition = rect;
     // Twice: when the rectangle is on a screen of another scale, the first
     // move changes the window's DPI and Windows scales its size with it.
     for _ in 0..2 {
@@ -39,7 +44,7 @@ pub fn restore(hwnd: HWND) {
     }
     // Windows moves a rectangle that is off every screen onto one, as it
     // should; any other difference is worth knowing about.
-    let on_a_screen = !unsafe { MonitorFromRect(&rect, MONITOR_DEFAULTTONULL) }.is_invalid();
+    let on_a_screen = !unsafe { MonitorFromRect(&to_screen(rect), MONITOR_DEFAULTTONULL) }.is_invalid();
     if let Some(placed) = current(hwnd)
         && placed != rect
         && on_a_screen
@@ -49,6 +54,27 @@ pub fn restore(hwnd: HWND) {
             (placed.left, placed.top, placed.right, placed.bottom),
             (rect.left, rect.top, rect.right, rect.bottom)
         );
+    }
+}
+
+/// `rect` from workspace to screen coordinates: they differ by the room the
+/// taskbar takes at the top or left of the primary screen.
+fn to_screen(rect: RECT) -> RECT {
+    let primary = unsafe { MonitorFromPoint(POINT::default(), MONITOR_DEFAULTTOPRIMARY) };
+    let mut info = MONITORINFO {
+        cbSize: size_of::<MONITORINFO>() as u32,
+        ..Default::default()
+    };
+    if !unsafe { GetMonitorInfoW(primary, &mut info) }.as_bool() {
+        return rect;
+    }
+    let dx = info.rcWork.left - info.rcMonitor.left;
+    let dy = info.rcWork.top - info.rcMonitor.top;
+    RECT {
+        left: rect.left + dx,
+        top: rect.top + dy,
+        right: rect.right + dx,
+        bottom: rect.bottom + dy,
     }
 }
 
