@@ -20,7 +20,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/images/settings.png" width="640" alt="The settings window, in French: two outputs with their keys F13 and F14, the first one marked as the default output, then the Win + wheel card open on the step, display style and position, and the General card">
+  <img src="docs/images/settings.png" width="640" alt="The settings window: two outputs with their keys F13 and F14, the first one marked as the default output, then the Win + wheel card open on the step, display style and position, and the General card">
 </p>
 
 ## What it does
@@ -52,7 +52,7 @@ If you use Volume2, quit it and remove it from startup: with both running, Win +
 - Each output has its card. Open it to change or clear its shortcut, to use the output for calls as well, or to remove it from the list.
 - Changes are saved and applied right away.
 
-<img src="docs/images/settings-output.png" width="480" alt="An output's card open, in French: its shortcut F13 with Change and Clear buttons, the switch to use it for calls as well, and Remove from the list">
+<img src="docs/images/settings-output.png" width="480" alt="An output's card open: its shortcut F13 with Change and Clear buttons, the switch to use it for calls as well, and Remove from the list">
 
 ## Files
 
