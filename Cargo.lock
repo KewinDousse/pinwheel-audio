@@ -1612,7 +1612,7 @@ checksum = "5d15f86d12da44cd8d4ec3c73984537eb7f4cadcb9776a575a0a8a05ca11005c"
 
 [[package]]
 name = "make-icon"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "tiny-skia",
 ]
@@ -2239,7 +2239,7 @@ checksum = "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd"
 
 [[package]]
 name = "pinwheel"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "ab_glyph",
  "eframe",
@@ -2254,7 +2254,7 @@ dependencies = [
 
 [[package]]
 name = "pinwheel-core"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "ab_glyph",
  "serde",
