@@ -88,9 +88,18 @@ pub struct Texts {
     pub shortcut_takes_over_key: &'static str,
     pub shift: &'static str,
 
-    /// Follows a drawn Win key: "+ wheel changes the volume".
+    /// Follows a drawn Win key: "+ scroll changes the volume".
     pub wheel_heading: &'static str,
     pub volume_step: &'static str,
+    pub fine_step: &'static str,
+    pub middle_click_mute: &'static str,
+
+    pub next_output_heading: &'static str,
+    pub next_output_help: &'static str,
+    pub no_listed_output_connected: &'static str,
+
+    pub display_heading: &'static str,
+    pub display_enabled: &'static str,
     pub style: &'static str,
     pub position: &'static str,
     pub style_bar: &'static str,
@@ -99,6 +108,13 @@ pub struct Texts {
     pub position_top: &'static str,
     pub position_center: &'static str,
     pub position_bottom: &'static str,
+    pub screen: &'static str,
+    pub screen_pointer: &'static str,
+    pub screen_primary: &'static str,
+    pub duration: &'static str,
+    pub seconds: fn(tenths: u32) -> String,
+    pub opacity: &'static str,
+    pub hide_in_fullscreen: &'static str,
     pub try_display: &'static str,
 
     pub general_heading: &'static str,
@@ -110,6 +126,10 @@ pub struct Texts {
 
     pub about_heading: &'static str,
     pub version: &'static str,
+    pub check_updates: &'static str,
+    pub check_updates_help: &'static str,
+    pub update_available: fn(version: &str) -> String,
+    pub see_release: &'static str,
     pub source_code: &'static str,
     pub report_problem: &'static str,
     pub open_issue: &'static str,
@@ -130,7 +150,7 @@ pub const ENGLISH: Texts = Texts {
     settings_corrupt: |backup| format!("The settings file was unreadable. It was kept as {backup}."),
     settings_unreadable: |error| format!("Could not read the settings: {error}"),
     settings_save_failed: |error| format!("Could not save the settings: {error}"),
-    not_running: "Pinwheel is not running: the wheel and the shortcuts do nothing.",
+    not_running: "Pinwheel is not running: Win + scroll and the hotkeys do nothing.",
     start_app: "Start Pinwheel",
     language: "Language",
     language_windows: "Same as Windows",
@@ -150,7 +170,7 @@ pub const ENGLISH: Texts = Texts {
     nothing_to_add: "Every connected output is already in the list.",
     no_output_connected: "No output connected.",
 
-    shortcut: "Shortcut",
+    shortcut: "Hotkey",
     set_key: "Set a key",
     capture_prompt: "Press the keys you want",
     capture_cancel_hint: "Esc to cancel",
@@ -159,17 +179,26 @@ pub const ENGLISH: Texts = Texts {
     clear: "Clear",
     no_shortcut: "None",
     set: "Set",
-    capture_failed: "Could not capture the shortcut: see the log.",
-    duplicate_shortcut: |other| format!("Same shortcut as “{other}”: only the first one works."),
-    shortcut_refused: "Windows refuses this shortcut: another app probably uses it.",
+    capture_failed: "Could not capture the hotkey: see the log.",
+    duplicate_shortcut: |other| format!("Same hotkey as “{other}”: only the first one works."),
+    shortcut_refused: "Windows refuses this hotkey: another app probably uses it.",
     shortcut_no_key: "Add a key besides Ctrl, Alt, Shift or Win.",
     shortcut_reserved_f12: "Windows reserves F12.",
-    shortcut_uses_win: "Windows reserves many Win shortcuts: this one may not work.",
+    shortcut_uses_win: "Windows reserves many Win hotkeys: this one may not work.",
     shortcut_takes_over_key: "Without Ctrl, Alt or Win, this key will only switch outputs, in every app.",
     shift: "Shift",
 
-    wheel_heading: "+ wheel changes the volume",
+    wheel_heading: "+ scroll changes the volume",
     volume_step: "Step per notch",
+    fine_step: "Win + Shift + scroll: 1% steps",
+    middle_click_mute: "Win + middle click: mute",
+
+    next_output_heading: "Next output",
+    next_output_help: "Switches to the next connected output of the list.",
+    no_listed_output_connected: "No output of the list is connected",
+
+    display_heading: "On-screen display",
+    display_enabled: "Show the volume and the new output",
     style: "Display style",
     position: "Position",
     style_bar: "Thin bar",
@@ -178,6 +207,13 @@ pub const ENGLISH: Texts = Texts {
     position_top: "Top",
     position_center: "Center",
     position_bottom: "Bottom",
+    screen: "Screen",
+    screen_pointer: "Under the pointer",
+    screen_primary: "Main screen",
+    duration: "Shown for",
+    seconds: |tenths| format!("{}.{} s", tenths / 10, tenths % 10),
+    opacity: "Opacity",
+    hide_in_fullscreen: "Hide over full-screen apps and games",
     try_display: "Try the display",
 
     general_heading: "General",
@@ -189,6 +225,10 @@ pub const ENGLISH: Texts = Texts {
 
     about_heading: "About Pinwheel",
     version: "Version",
+    check_updates: "Check for updates",
+    check_updates_help: "On GitHub, at startup then once a day. Nothing is installed.",
+    update_available: |version| format!("Pinwheel {version} is available"),
+    see_release: "See the release",
     source_code: "Source code",
     report_problem: "Report a problem",
     open_issue: "Open an issue",
@@ -209,7 +249,7 @@ pub const FRENCH: Texts = Texts {
     settings_corrupt: |backup| format!("Le fichier de paramètres était illisible. Il a été gardé sous {backup}."),
     settings_unreadable: |error| format!("Lecture des paramètres impossible : {error}"),
     settings_save_failed: |error| format!("Enregistrement impossible : {error}"),
-    not_running: "Pinwheel ne tourne pas : la molette et les raccourcis sont inactifs.",
+    not_running: "Pinwheel ne tourne pas : Win + molette et les raccourcis sont inactifs.",
     start_app: "Lancer Pinwheel",
     language: "Langue",
     language_windows: "Celle de Windows",
@@ -249,6 +289,15 @@ pub const FRENCH: Texts = Texts {
 
     wheel_heading: "+ molette règle le volume",
     volume_step: "Pas par cran",
+    fine_step: "Win + Maj + molette : pas de 1 %",
+    middle_click_mute: "Win + clic molette : couper le son",
+
+    next_output_heading: "Sortie suivante",
+    next_output_help: "Passe à la sortie connectée suivante de la liste.",
+    no_listed_output_connected: "Aucune sortie de la liste n'est connectée",
+
+    display_heading: "Affichage à l'écran",
+    display_enabled: "Montrer le volume et la nouvelle sortie",
     style: "Style de l'affichage",
     position: "Position",
     style_bar: "Barre fine",
@@ -257,6 +306,13 @@ pub const FRENCH: Texts = Texts {
     position_top: "En haut",
     position_center: "Au centre",
     position_bottom: "En bas",
+    screen: "Écran",
+    screen_pointer: "Sous le pointeur",
+    screen_primary: "Écran principal",
+    duration: "Durée",
+    seconds: |tenths| format!("{},{} s", tenths / 10, tenths % 10),
+    opacity: "Opacité",
+    hide_in_fullscreen: "Masquer sur les applications et jeux en plein écran",
     try_display: "Essayer l'affichage",
 
     general_heading: "Général",
@@ -268,6 +324,10 @@ pub const FRENCH: Texts = Texts {
 
     about_heading: "À propos de Pinwheel",
     version: "Version",
+    check_updates: "Rechercher les mises à jour",
+    check_updates_help: "Sur GitHub, au lancement puis une fois par jour. Rien n'est installé.",
+    update_available: |version| format!("Pinwheel {version} est disponible"),
+    see_release: "Voir la version",
     source_code: "Code source",
     report_problem: "Signaler un problème",
     open_issue: "Ouvrir un ticket",
@@ -299,5 +359,7 @@ mod tests {
     fn formats_with_each_language_typography() {
         assert_eq!((ENGLISH.percent)(40), "40%");
         assert_eq!((FRENCH.percent)(40), "40 %");
+        assert_eq!((ENGLISH.seconds)(15), "1.5 s");
+        assert_eq!((FRENCH.seconds)(15), "1,5 s");
     }
 }

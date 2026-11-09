@@ -75,6 +75,17 @@ impl Audio {
         Ok(VolumeState { level, muted })
     }
 
+    /// Mutes the default output, or unmutes it.
+    pub fn toggle_mute(&self) -> Result<VolumeState> {
+        let endpoint = endpoint_volume(&self.default_output()?)?;
+        let muted = !unsafe { endpoint.GetMute() }?.as_bool();
+        unsafe { endpoint.SetMute(muted, std::ptr::null()) }?;
+        Ok(VolumeState {
+            level: unsafe { endpoint.GetMasterVolumeLevelScalar() }?,
+            muted,
+        })
+    }
+
     /// Makes `id` the default output for apps and media, and optionally for calls.
     pub fn set_default(&self, id: &str, communications: bool) -> Result<()> {
         let policy: IPolicyConfig = unsafe { CoCreateInstance(&CLSID_POLICY_CONFIG_CLIENT, None, CLSCTX_ALL) }?;

@@ -25,9 +25,9 @@
 
 ## What it does
 
-- **<kbd>⊞ Win</kbd> + scroll** changes the volume of the default output, 10% per wheel notch (adjustable).
-- **One hotkey per output** makes it the default output: speakers on one key, headphones on another. Any key or combination works, media and macro keys included.
-- **An on-screen display** shows the volume or the new output for 1 s, then fades out. Three styles: thin bar, pill, big number.
+- **<kbd>⊞ Win</kbd> + scroll** changes the volume of the default output, 10% per wheel notch (adjustable). With Shift, 1% per notch. **Win + middle click** mutes.
+- **One hotkey per output** makes it the default output: speakers on one key, headphones on another. Any key or combination works, media and macro keys included. Another hotkey can go to the next output of the list.
+- **An on-screen display** shows the volume or the new output for 1 s (adjustable), then fades out. Three styles: thin bar, pill, big number.
 
 <img src="docs/images/display.png" width="760" alt="The volume display in its three styles, pill, thin bar and big number, and the announcement of a new output: dark panels with a light blue gauge">
 
@@ -47,10 +47,14 @@ If you use Volume2, quit it and remove it from startup: with both running, Win +
 
 <img src="docs/images/tray.png" width="180" alt="The Pinwheel icon in the notification area, next to the network and volume icons and the clock">
 
-- Click the tray icon to open the settings. Right-click for the menu (Settings, Quit).
+- Click the tray icon to open the settings. Right-click for the menu (Settings, Quit, and the newer release when there is one).
 - Running `pinwheel.exe` again while it runs also opens the settings.
 - Each output has its card. Open it to change or clear its hotkey, to use the output for calls as well, or to remove it from the list.
 - Changes are saved and applied right away.
+
+### Update check
+
+At startup and once a day, Pinwheel asks GitHub for its latest release, and says so in the settings and the tray menu when a newer one is out. It never installs anything. That request is its only network access: turn it off with "Check for updates", in "About Pinwheel".
 
 <img src="docs/images/settings-output.png" width="480" alt="An output's card open: its shortcut F13 with Change and Clear buttons, the switch to use it for calls as well, and Remove from the list">
 
@@ -60,7 +64,7 @@ If you use Volume2, quit it and remove it from startup: with both running, Win +
 |:--|:--|
 | `%APPDATA%\Pinwheel\settings.json` | Settings |
 | `%LOCALAPPDATA%\Pinwheel\logs\pinwheel.log` | Log ("Open folder" next to Logs, in the General card) |
-| `%LOCALAPPDATA%\Pinwheel\status.json` | Shortcuts Windows refused, read by the settings window |
+| `%LOCALAPPDATA%\Pinwheel\status.json` | Shortcuts Windows refused and the newer release, read by the settings window |
 | `%LOCALAPPDATA%\Pinwheel\window.txt` | Position and size of the settings window |
 
 An unreadable settings file is renamed to `settings.json.<timestamp>.bak` instead of being overwritten.
@@ -84,7 +88,7 @@ cargo run -p pinwheel-core --example osd-preview -- preview.png <font.ttf> [bold
 
 The `osd-preview` example draws every display style, in both languages, into one image.
 
-On Windows, the CI's `e2e` job runs the exe on the runner's desktop and drives it with real keys and clicks ([`.github/e2e/e2e.ps1`](.github/e2e/e2e.ps1)): the Start menu entry, each card opening alone, the window opening where it was closed, the shortcut capture, Escape, a saved shortcut, and Win + wheel keeping Start closed while Win alone opens it. Its screenshots of the settings window are in the run's `e2e` artifact. The runner has no audio device, so what needs one follows [`docs/manual-tests.md`](docs/manual-tests.md).
+On Windows, the CI's `e2e` job runs the exe on the runner's desktop and drives it with real keys and clicks ([`.github/e2e/e2e.ps1`](.github/e2e/e2e.ps1)): the Start menu entry, each card opening alone, the window opening where it was closed, the shortcut capture, Escape, a saved shortcut and the next output one, and Win + wheel, Win + Shift + wheel and Win + middle click keeping Start closed while Win alone opens it. Its screenshots of the settings window are in the run's `e2e` artifact. The runner has no audio device, so what needs one follows [`docs/manual-tests.md`](docs/manual-tests.md).
 
 ### Build the Windows executable
 

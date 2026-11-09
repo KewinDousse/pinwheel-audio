@@ -1,5 +1,6 @@
 //! Runtime state the background process shares with the settings window.
 
+use crate::update::Release;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -10,10 +11,14 @@ pub struct Status {
     /// Shortcuts Windows refused to register: the Windows error, keyed by
     /// output ID. The settings window shows its own message for them.
     pub hotkey_errors: BTreeMap<String, String>,
+    /// The Windows error for the "next output" shortcut.
+    pub next_output_error: Option<String>,
+    /// A newer release, found by the last check.
+    pub update: Option<Release>,
 }
 
 /// Missing or unreadable means "nothing to report": the file is rewritten
-/// each time the shortcuts are registered.
+/// each time the shortcuts are registered or an update check ends.
 pub fn load(path: &Path) -> Status {
     std::fs::read_to_string(path)
         .ok()

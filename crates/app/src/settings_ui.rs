@@ -10,12 +10,15 @@ use crate::ipc::{self, InstanceLock, WM_PREVIEW_OSD, WM_RELOAD, wide};
 use crate::keys::{self, Capture, Captured};
 use crate::settings_theme::{self as theme, Palette, Themes};
 use crate::startup::{self, StartupState};
-use crate::{icon, language, paths, window_place};
+use crate::{icon, language, paths, shell, window_place};
 use eframe::egui::{self, Margin, RichText};
 use pinwheel_core::devices::{DeviceInfo, Resolution, resolve};
 use pinwheel_core::hotkey::Hotkey;
 use pinwheel_core::i18n::{Lang, Texts};
-use pinwheel_core::settings::{self, OsdPosition, OsdStyle, OutputBinding, Settings, duplicate_hotkey};
+use pinwheel_core::settings::{
+    self, OSD_DURATION_MS, OSD_OPACITY, OsdPosition, OsdScreen, OsdStyle, OutputBinding, Settings, duplicate_hotkey,
+    next_output_duplicate,
+};
 use pinwheel_core::status::{self, Status};
 use pinwheel_core::volume::STEP_RANGE;
 use std::path::PathBuf;
@@ -24,11 +27,8 @@ use windows::Win32::Foundation::{FILETIME, HWND, RECT};
 use windows::Win32::System::Com::{COINIT_APARTMENTTHREADED, CoInitializeEx};
 use windows::Win32::System::SystemInformation::GetSystemTimePreciseAsFileTime;
 use windows::Win32::System::Threading::{GetCurrentProcess, GetProcessTimes};
-use windows::Win32::UI::Shell::ShellExecuteW;
-use windows::Win32::UI::WindowsAndMessaging::{
-    FindWindowW, SW_RESTORE, SW_SHOWNORMAL, SetForegroundWindow, ShowWindow,
-};
-use windows::core::{PCWSTR, w};
+use windows::Win32::UI::WindowsAndMessaging::{FindWindowW, SW_RESTORE, SetForegroundWindow, ShowWindow};
+use windows::core::PCWSTR;
 
 const REFRESH_EVERY: Duration = Duration::from_secs(1);
 const PAGE_MARGIN: Margin = Margin {
@@ -139,11 +139,18 @@ struct SettingsApp {
     themes: Themes,
 }
 
-/// Shortcut being captured for the output at `index`.
+/// Shortcut being captured.
 struct ActiveCapture {
-    index: usize,
+    target: CaptureTarget,
     capture: Capture,
     started: Instant,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum CaptureTarget {
+    /// The output at this index.
+    Output(usize),
+    NextOutput,
 }
 
 impl ActiveCapture {
@@ -196,7 +203,7 @@ impl SettingsApp {
         self.lang().texts()
     }
 
-    fn start_capture(&mut self, index: usize, ctx: &egui::Context) {
+    fn start_capture(&mut self, target: CaptureTarget, ctx: &egui::Context) {
         // Dropping a previous capture stops it first.
         self.capture = None;
         // egui also gets the keys: Space or Enter, typed as the shortcut,
@@ -210,7 +217,7 @@ impl SettingsApp {
         match Capture::start(move || ctx.request_repaint()) {
             Ok(capture) => {
                 self.capture = Some(ActiveCapture {
-                    index,
+                    target,
                     capture,
                     started: Instant::now(),
                 })
@@ -226,15 +233,18 @@ impl SettingsApp {
     /// and wakes the UI up with its result.
     fn poll_capture(&mut self) {
         let Some(active) = &self.capture else { return };
-        let index = active.index;
+        let target = active.target;
         let Some(result) = active.capture.poll() else { return };
         self.capture = None;
         match result {
-            Captured::Hotkey(hotkey) => {
-                if let Some(output) = self.settings.outputs.get_mut(index) {
-                    output.hotkey = Some(hotkey);
+            Captured::Hotkey(hotkey) => match target {
+                CaptureTarget::Output(index) => {
+                    if let Some(output) = self.settings.outputs.get_mut(index) {
+                        output.hotkey = Some(hotkey);
+                    }
                 }
-            }
+                CaptureTarget::NextOutput => self.settings.next_output_hotkey = Some(hotkey),
+            },
             Captured::Cancelled => {}
             Captured::Failed => self.error = Some(self.texts().capture_failed.into()),
         }
@@ -343,6 +353,15 @@ impl SettingsApp {
                 ui.label(RichText::new(t.audio_unavailable).color(palette.warning));
             });
         }
+        if self.settings.check_updates
+            && let Some(release) = &self.status.update
+        {
+            theme::accent_banner(ui, palette, |ui| {
+                theme::labelled(ui, (t.update_available)(&release.version), None, |ui| {
+                    ui.hyperlink_to(t.see_release, &release.url);
+                });
+            });
+        }
     }
 
     fn outputs_section(&mut self, ui: &mut egui::Ui) {
@@ -350,7 +369,7 @@ impl SettingsApp {
         let palette = self.themes.palette(ui);
         theme::heading(ui, t.outputs_heading);
 
-        let capturing = self.capture.as_ref().map(|c| (c.index, c.remaining()));
+        let capturing = self.capture.as_ref().map(|c| (c.target, c.remaining()));
         let mut event = None;
         for index in 0..self.settings.outputs.len() {
             let duplicate_of = duplicate_hotkey(&self.settings.outputs, index).map(|o| o.name.clone());
@@ -358,7 +377,9 @@ impl SettingsApp {
             let state = device_state(&self.settings.outputs[index], &self.devices, self.default_id.as_deref());
             let output = &mut self.settings.outputs[index];
             let open = self.open.as_ref() == Some(&Fold::Output(output.id.clone()));
-            let captured = capturing.filter(|(i, _)| *i == index).map(|(_, remaining)| remaining);
+            let captured = capturing
+                .filter(|(target, _)| *target == CaptureTarget::Output(index))
+                .map(|(_, remaining)| remaining);
             let reveal = self.reveal && open;
             ui.add_enabled_ui(capturing.is_none() || captured.is_some(), |ui| {
                 theme::fold_card(ui, palette, reveal, |ui| {
@@ -443,7 +464,7 @@ impl SettingsApp {
             OutputAction::Toggle => self.toggle_fold(fold),
             OutputAction::Capture => {
                 self.open = Some(fold);
-                self.start_capture(index, ui.ctx());
+                self.start_capture(CaptureTarget::Output(index), ui.ctx());
             }
             OutputAction::StopCapture => self.capture = None,
             OutputAction::Clear => self.settings.outputs[index].hotkey = None,
@@ -514,13 +535,76 @@ impl SettingsApp {
         }
     }
 
-    fn wheel_section(&mut self, ui: &mut egui::Ui) {
+    fn next_output_section(&mut self, ui: &mut egui::Ui) {
         let (lang, t) = (self.lang(), self.texts());
         let palette = self.themes.palette(ui);
+        let open = self.open == Some(Fold::NextOutput);
+        let captured = self
+            .capture
+            .as_ref()
+            .filter(|c| c.target == CaptureTarget::NextOutput)
+            .map(ActiveCapture::remaining);
+        let duplicate_of = next_output_duplicate(&self.settings).map(|o| o.name.clone());
+        let refused = self.status.next_output_error.is_some();
+        let hotkey = self.settings.next_output_hotkey;
+        let enabled = self.capture.is_none() || captured.is_some();
+        let action = ui.add_enabled_ui(enabled, |ui| {
+            theme::fold_card(ui, palette, self.reveal && open, |ui| {
+                let (clicked, header_action) = theme::fold_header(
+                    ui,
+                    palette,
+                    open || captured.is_some(),
+                    t.next_output_heading,
+                    theme::HEADER_ONE_LINE,
+                    |ui| {
+                        ui.label(t.next_output_heading);
+                    },
+                    |ui| {
+                        if open || captured.is_some() {
+                            return None;
+                        }
+                        match &hotkey {
+                            Some(hotkey) => {
+                                keycaps(ui, palette, hotkey, lang);
+                                None
+                            }
+                            None => ui.button(t.set_key).clicked().then_some(OutputAction::Capture),
+                        }
+                    },
+                );
+                let mut action = header_action.or((clicked && captured.is_none()).then_some(OutputAction::Toggle));
+                if let Some(remaining) = captured {
+                    if capture_box(ui, palette, t, remaining) {
+                        action = Some(OutputAction::StopCapture);
+                    }
+                } else if open {
+                    let help = Some(theme::help(palette, t.next_output_help));
+                    let controls = theme::fold_row(ui, palette, t.shortcut, help, |ui| {
+                        hotkey_controls(ui, palette, hotkey.as_ref(), lang)
+                    });
+                    action = action.or(controls);
+                }
+                hotkey_messages(ui, palette, hotkey.as_ref(), duplicate_of.as_deref(), refused, lang);
+                action
+            })
+        });
+        match action.inner {
+            Some(OutputAction::Toggle) => self.toggle_fold(Fold::NextOutput),
+            Some(OutputAction::Capture) => {
+                self.open = Some(Fold::NextOutput);
+                self.start_capture(CaptureTarget::NextOutput, ui.ctx());
+            }
+            Some(OutputAction::StopCapture) => self.capture = None,
+            Some(OutputAction::Clear) => self.settings.next_output_hotkey = None,
+            Some(OutputAction::Remove) | None => {}
+        }
+    }
+
+    fn wheel_section(&mut self, ui: &mut egui::Ui) {
+        let t = self.texts();
+        let palette = self.themes.palette(ui);
         let open = self.open == Some(Fold::Wheel);
-        let main_running = self.main_running;
-        let step = &mut self.settings.volume_step;
-        let osd = &mut self.settings.osd;
+        let settings = &mut self.settings;
         let mut toggled = false;
         ui.add_enabled_ui(self.capture.is_none(), |ui| {
             theme::fold_card(ui, palette, self.reveal && open, |ui| {
@@ -535,8 +619,50 @@ impl SettingsApp {
                         theme::keycap(ui, palette, "Win");
                         ui.label(t.wheel_heading);
                     },
+                    |_| {},
+                );
+                if !open {
+                    return;
+                }
+                let step = &mut settings.volume_step;
+                theme::fold_row(ui, palette, t.volume_step, None, |ui| {
+                    ui.label((t.percent)(i32::from(*step)));
+                    ui.add(egui::Slider::new(step, STEP_RANGE).show_value(false));
+                });
+                theme::fold_row(ui, palette, t.fine_step, None, |ui| {
+                    switch(ui, palette, &mut settings.fine_step, t.fine_step, t);
+                });
+                theme::fold_row(ui, palette, t.middle_click_mute, None, |ui| {
+                    switch(ui, palette, &mut settings.middle_click_mute, t.middle_click_mute, t);
+                });
+            });
+        });
+        if toggled {
+            self.toggle_fold(Fold::Wheel);
+        }
+    }
+
+    fn display_section(&mut self, ui: &mut egui::Ui) {
+        let (lang, t) = (self.lang(), self.texts());
+        let palette = self.themes.palette(ui);
+        let open = self.open == Some(Fold::Display);
+        let main_running = self.main_running;
+        let osd = &mut self.settings.osd;
+        let mut toggled = false;
+        ui.add_enabled_ui(self.capture.is_none(), |ui| {
+            theme::fold_card(ui, palette, self.reveal && open, |ui| {
+                (toggled, ()) = theme::fold_header(
+                    ui,
+                    palette,
+                    open,
+                    t.display_heading,
+                    theme::HEADER_ONE_LINE,
                     |ui| {
-                        if open && ui.add_enabled(main_running, egui::Button::new(t.try_display)).clicked() {
+                        ui.label(t.display_heading);
+                    },
+                    |ui| {
+                        let can_try = main_running && osd.enabled;
+                        if open && ui.add_enabled(can_try, egui::Button::new(t.try_display)).clicked() {
                             ipc::notify_main(WM_PREVIEW_OSD);
                         }
                     },
@@ -544,25 +670,39 @@ impl SettingsApp {
                 if !open {
                     return;
                 }
-                theme::fold_row(ui, palette, t.volume_step, None, |ui| {
-                    ui.label((t.percent)(i32::from(*step)));
-                    ui.add(egui::Slider::new(step, STEP_RANGE).show_value(false));
+                theme::fold_row(ui, palette, t.display_enabled, None, |ui| {
+                    switch(ui, palette, &mut osd.enabled, t.display_enabled, t);
                 });
-                theme::fold_row(ui, palette, t.style, None, |ui| {
-                    theme::segmented(ui, palette, &mut osd.style, &OsdStyle::ALL.map(|s| (s, s.label(lang))));
-                });
-                theme::fold_row(ui, palette, t.position, None, |ui| {
-                    theme::segmented(
-                        ui,
-                        palette,
-                        &mut osd.position,
-                        &OsdPosition::ALL.map(|p| (p, p.label(lang))),
-                    );
+                ui.add_enabled_ui(osd.enabled, |ui| {
+                    theme::fold_row(ui, palette, t.style, None, |ui| {
+                        theme::segmented(ui, palette, &mut osd.style, &OsdStyle::ALL.map(|s| (s, s.label(lang))));
+                    });
+                    theme::fold_row(ui, palette, t.position, None, |ui| {
+                        let choices = OsdPosition::ALL.map(|p| (p, p.label(lang)));
+                        theme::segmented(ui, palette, &mut osd.position, &choices);
+                    });
+                    theme::fold_row(ui, palette, t.screen, None, |ui| {
+                        let choices = OsdScreen::ALL.map(|s| (s, s.label(lang)));
+                        theme::segmented(ui, palette, &mut osd.screen, &choices);
+                    });
+                    theme::fold_row(ui, palette, t.duration, None, |ui| {
+                        ui.label((t.seconds)(osd.duration_ms / 100));
+                        let slider = egui::Slider::new(&mut osd.duration_ms, OSD_DURATION_MS).step_by(100.0);
+                        ui.add(slider.show_value(false));
+                    });
+                    theme::fold_row(ui, palette, t.opacity, None, |ui| {
+                        ui.label((t.percent)(i32::from(osd.opacity)));
+                        let slider = egui::Slider::new(&mut osd.opacity, OSD_OPACITY).step_by(5.0);
+                        ui.add(slider.show_value(false));
+                    });
+                    theme::fold_row(ui, palette, t.hide_in_fullscreen, None, |ui| {
+                        switch(ui, palette, &mut osd.hide_in_fullscreen, t.hide_in_fullscreen, t);
+                    });
                 });
             });
         });
         if toggled {
-            self.toggle_fold(Fold::Wheel);
+            self.toggle_fold(Fold::Display);
         }
     }
 
@@ -603,7 +743,9 @@ impl SettingsApp {
                 });
                 theme::fold_row(ui, palette, t.logs, None, |ui| {
                     if ui.button(t.open_folder).clicked() {
-                        open_folder(&paths::log_dir());
+                        let dir = paths::log_dir();
+                        let _ = std::fs::create_dir_all(&dir);
+                        shell::open(&dir.display().to_string());
                     }
                 });
             });
@@ -624,6 +766,7 @@ impl SettingsApp {
         let t = self.texts();
         let palette = self.themes.palette(ui);
         let open = self.open == Some(Fold::About);
+        let check_updates = &mut self.settings.check_updates;
         let mut toggled = false;
         ui.add_enabled_ui(self.capture.is_none(), |ui| {
             theme::fold_card(ui, palette, self.reveal && open, |ui| {
@@ -644,6 +787,10 @@ impl SettingsApp {
                 let repository = env!("CARGO_PKG_REPOSITORY");
                 theme::fold_row(ui, palette, t.version, None, |ui| {
                     ui.label(env!("CARGO_PKG_VERSION"));
+                });
+                let help = Some(theme::help(palette, t.check_updates_help));
+                theme::fold_row(ui, palette, t.check_updates, help, |ui| {
+                    switch(ui, palette, check_updates, t.check_updates, t);
                 });
                 theme::fold_row(ui, palette, t.source_code, None, |ui| {
                     ui.hyperlink_to("GitHub", repository);
@@ -708,8 +855,10 @@ impl eframe::App for SettingsApp {
                     self.banners(ui);
                     self.outputs_section(ui);
                     self.add_section(ui);
+                    self.next_output_section(ui);
                     ui.add_space(16.0);
                     self.wheel_section(ui);
+                    self.display_section(ui);
                     ui.add_space(16.0);
                     self.general_section(ui);
                     self.about_section(ui);
@@ -776,7 +925,9 @@ enum Fold {
     /// The output with this ID.
     Output(String),
     Add,
+    NextOutput,
     Wheel,
+    Display,
     General,
     About,
 }
@@ -890,19 +1041,4 @@ fn since_process_start() -> Option<Duration> {
 
 fn file_time(path: &std::path::Path) -> Option<SystemTime> {
     std::fs::metadata(path).and_then(|m| m.modified()).ok()
-}
-
-fn open_folder(path: &std::path::Path) {
-    let _ = std::fs::create_dir_all(path);
-    let target = wide(&path.display().to_string());
-    unsafe {
-        ShellExecuteW(
-            None,
-            w!("open"),
-            PCWSTR(target.as_ptr()),
-            PCWSTR::null(),
-            PCWSTR::null(),
-            SW_SHOWNORMAL,
-        )
-    };
 }

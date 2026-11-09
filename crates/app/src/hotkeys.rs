@@ -1,50 +1,81 @@
-//! Registration of the per-output shortcuts with `RegisterHotKey`.
+//! Registration of the per-output and "next output" shortcuts with
+//! `RegisterHotKey`.
 //!
 //! A shortcut Windows refuses stays in the settings: the refusal is written
 //! to the status file for the settings window, and registration is retried
 //! on a timer, since the app holding it may quit.
 
 use pinwheel_core::hotkey::Hotkey;
-use pinwheel_core::settings::{OutputBinding, duplicate_hotkey};
+use pinwheel_core::settings::{Settings, duplicate_hotkey, next_output_duplicate};
 use pinwheel_core::status::Status;
 use windows::Win32::Foundation::HWND;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     HOT_KEY_MODIFIERS, MOD_ALT, MOD_CONTROL, MOD_NOREPEAT, MOD_SHIFT, MOD_WIN, RegisterHotKey, UnregisterHotKey,
 };
 
-/// `WM_HOTKEY` identifiers are the output's index plus this offset.
+/// `WM_HOTKEY` identifiers of the outputs are their index plus this offset.
 const ID_OFFSET: i32 = 1;
+/// The highest identifier an app may use, far from the outputs' ones.
+const NEXT_OUTPUT_ID: i32 = 0xBFFF;
+
+/// What a shortcut does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Slot {
+    /// Makes the output at this index the default one.
+    Output(usize),
+    NextOutput,
+}
+
+impl Slot {
+    /// The slot of a `WM_HOTKEY` identifier.
+    pub fn from_id(id: usize) -> Option<Self> {
+        if id == NEXT_OUTPUT_ID as usize {
+            Some(Self::NextOutput)
+        } else {
+            id.checked_sub(ID_OFFSET as usize).map(Self::Output)
+        }
+    }
+
+    fn id(self) -> i32 {
+        match self {
+            Self::Output(index) => index as i32 + ID_OFFSET,
+            Self::NextOutput => NEXT_OUTPUT_ID,
+        }
+    }
+}
 
 #[derive(Default)]
 pub struct Hotkeys {
     registered: Vec<i32>,
-    /// Indexes of outputs whose shortcut Windows refused.
-    refused: Vec<usize>,
+    /// Shortcuts Windows refused.
+    refused: Vec<Slot>,
 }
 
 impl Hotkeys {
-    /// Replaces every registration with the shortcuts of `outputs`.
-    pub fn register_all(&mut self, hwnd: HWND, outputs: &[OutputBinding]) -> Status {
+    /// Replaces every registration with the shortcuts of `settings`. The
+    /// status holds only the refusals.
+    pub fn register_all(&mut self, hwnd: HWND, settings: &Settings) -> Status {
         self.unregister_all(hwnd);
         self.refused.clear();
         let mut status = Status::default();
-        for index in 0..outputs.len() {
-            self.try_register(hwnd, outputs, index, &mut status);
+        let slots = (0..settings.outputs.len()).map(Slot::Output).chain([Slot::NextOutput]);
+        for slot in slots {
+            self.try_register(hwnd, settings, slot, &mut status);
         }
         status
     }
 
-    /// Tries the refused shortcuts again. Returns the new status when
+    /// Tries the refused shortcuts again. Returns the refusals left when
     /// something changed.
-    pub fn retry_refused(&mut self, hwnd: HWND, outputs: &[OutputBinding]) -> Option<Status> {
+    pub fn retry_refused(&mut self, hwnd: HWND, settings: &Settings) -> Option<Status> {
         if self.refused.is_empty() {
             return None;
         }
         let before = self.refused.len();
         let pending = std::mem::take(&mut self.refused);
         let mut status = Status::default();
-        for index in pending {
-            self.try_register(hwnd, outputs, index, &mut status);
+        for slot in pending {
+            self.try_register(hwnd, settings, slot, &mut status);
         }
         (self.refused.len() != before).then_some(status)
     }
@@ -59,26 +90,38 @@ impl Hotkeys {
         !self.refused.is_empty()
     }
 
-    /// Output index of a `WM_HOTKEY` identifier.
-    pub fn output_index(id: usize) -> Option<usize> {
-        id.checked_sub(ID_OFFSET as usize)
-    }
-
-    fn try_register(&mut self, hwnd: HWND, outputs: &[OutputBinding], index: usize, status: &mut Status) {
-        let output = &outputs[index];
-        let Some(hotkey) = output.hotkey else { return };
+    fn try_register(&mut self, hwnd: HWND, settings: &Settings, slot: Slot, status: &mut Status) {
+        let (hotkey, duplicate, name) = match slot {
+            Slot::Output(index) => {
+                let output = &settings.outputs[index];
+                let duplicate = duplicate_hotkey(&settings.outputs, index).is_some();
+                (output.hotkey, duplicate, output.name.as_str())
+            }
+            Slot::NextOutput => (
+                settings.next_output_hotkey,
+                next_output_duplicate(settings).is_some(),
+                "next output",
+            ),
+        };
+        let Some(hotkey) = hotkey else { return };
         // The settings window explains invalid and duplicate shortcuts itself.
-        if hotkey.validate().is_err() || duplicate_hotkey(outputs, index).is_some() {
+        if hotkey.validate().is_err() || duplicate {
             return;
         }
-        let id = index as i32 + ID_OFFSET;
+        let id = slot.id();
         match unsafe { RegisterHotKey(Some(hwnd), id, modifiers(&hotkey), u32::from(hotkey.key)) } {
             Ok(()) => self.registered.push(id),
             Err(e) => {
-                log::warn!("shortcut {hotkey} for \"{}\" refused: {e}", output.name);
-                self.refused.push(index);
+                log::warn!("shortcut {hotkey} for \"{name}\" refused: {e}");
+                self.refused.push(slot);
                 // The settings window words the refusal in its own language.
-                status.hotkey_errors.insert(output.id.clone(), e.to_string());
+                match slot {
+                    Slot::Output(index) => {
+                        let output_id = settings.outputs[index].id.clone();
+                        status.hotkey_errors.insert(output_id, e.to_string());
+                    }
+                    Slot::NextOutput => status.next_output_error = Some(e.to_string()),
+                }
             }
         }
     }

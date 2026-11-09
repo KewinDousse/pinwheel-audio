@@ -455,8 +455,17 @@ pub fn waiting_frame<R>(ui: &mut egui::Ui, palette: &Palette, add: impl FnOnce(&
 
 /// A banner across the top of the window, for what needs attention.
 pub fn warning_banner(ui: &mut egui::Ui, palette: &Palette, add: impl FnOnce(&mut egui::Ui)) {
+    banner(ui, palette.warning_background, add);
+}
+
+/// For good news, such as a newer release.
+pub fn accent_banner(ui: &mut egui::Ui, palette: &Palette, add: impl FnOnce(&mut egui::Ui)) {
+    banner(ui, palette.accent.gamma_multiply(0.14), add);
+}
+
+fn banner(ui: &mut egui::Ui, fill: Color32, add: impl FnOnce(&mut egui::Ui)) {
     egui::Frame::new()
-        .fill(palette.warning_background)
+        .fill(fill)
         .corner_radius(CornerRadius::same(CARD_RADIUS))
         .inner_margin(Margin::symmetric(16, 10))
         .show(ui, |ui| {

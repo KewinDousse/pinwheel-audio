@@ -4,7 +4,9 @@
 
 Win + wheel is caught by a `WH_MOUSE_LL` hook. A `WH_KEYBOARD_LL` hook keeps Start closed. Both are installed on a dedicated thread with its own message loop.
 
-- **Trigger**: only with left or right Win held, without Ctrl, Alt or Shift. The horizontal wheel is ignored.
+- **Trigger**: only with left or right Win held, without Ctrl or Alt. The horizontal wheel is ignored.
+- **Win + Shift + wheel**: steps of 1%, for a fine setting. It can be turned off, and Win + Shift + wheel is then left to other apps.
+- **Win + middle click**: mutes or unmutes the default output. The press and its release are swallowed, and Win counts as used, as with the wheel. It can be turned off.
 - **Wheel**: deltas add up, and each 120 (a classic notch) gives one step. A change of direction or a pause longer than 400 ms drops the fraction in progress. High-resolution wheels and touchpads send smaller deltas.
 - **Steps**: the level lands on a multiple of the step (from 33%, a step of 10 leads to 40 or 30). Raising the volume unmutes.
 - **Swallowed event**: the window under the cursor does not scroll.

@@ -1,14 +1,14 @@
 //! The on-screen display window: a layered, click-through, topmost popup
 //! that never takes the focus and stays out of Alt+Tab.
 //!
-//! It shows for [`HOLD`], then fades out over [`FADE`]. Each new content
-//! restarts the hold. The timers belong to the main window, which forwards
+//! It shows for the duration set, then fades out over [`FADE`]. Each new
+//! content restarts the hold. The timers belong to the main window, which forwards
 //! `WM_TIMER` to [`Osd::on_timer`], so all state lives on the main thread.
 
 use crate::accent;
 use pinwheel_core::i18n::Lang;
 use pinwheel_core::osd::{Content, Fonts, Look, Rgb, SHADOW_MARGIN, render};
-use pinwheel_core::settings::{OsdPosition, OsdSettings};
+use pinwheel_core::settings::{OsdPosition, OsdScreen, OsdSettings};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 use tiny_skia::Pixmap;
@@ -16,10 +16,13 @@ use windows::Win32::Foundation::{COLORREF, HWND, LPARAM, LRESULT, POINT, SIZE, W
 use windows::Win32::Graphics::Gdi::{
     AC_SRC_ALPHA, AC_SRC_OVER, BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BLENDFUNCTION, CreateCompatibleDC,
     CreateDIBSection, DIB_RGB_COLORS, DeleteDC, DeleteObject, GetDC, GetMonitorInfoW, HBITMAP, HDC, HGDIOBJ,
-    MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromPoint, ReleaseDC, SelectObject,
+    MONITOR_DEFAULTTONEAREST, MONITOR_DEFAULTTOPRIMARY, MONITORINFO, MonitorFromPoint, ReleaseDC, SelectObject,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::HiDpi::{GetDpiForMonitor, MDT_EFFECTIVE_DPI};
+use windows::Win32::UI::Shell::{
+    QUNS_BUSY, QUNS_PRESENTATION_MODE, QUNS_RUNNING_D3D_FULL_SCREEN, SHQueryUserNotificationState,
+};
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, GetCursorPos, HTTRANSPARENT, HWND_TOPMOST, KillTimer, MA_NOACTIVATE,
     RegisterClassExW, SW_HIDE, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SetTimer, SetWindowPos,
@@ -28,7 +31,6 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 use windows::core::w;
 
-const HOLD: Duration = Duration::from_secs(1);
 const FADE: Duration = Duration::from_millis(300);
 const FADE_TICK_MS: u32 = 15;
 
@@ -46,6 +48,8 @@ pub struct Osd {
     fonts: Fonts,
     surface: Option<Surface>,
     fade_start: Option<Instant>,
+    /// Opacity of the panel before it fades.
+    alpha: u8,
     /// Read once per appearance: reading it takes longer than drawing.
     accent: Option<Rgb>,
 }
@@ -89,15 +93,24 @@ impl Osd {
             fonts,
             surface: None,
             fade_start: None,
+            alpha: 255,
             accent: None,
         })
     }
 
-    /// Shows `content` on the monitor under the cursor.
+    /// Shows `content`, unless the settings say not to.
     pub fn show(&mut self, content: &Content, settings: OsdSettings, lang: Lang) {
-        let mut cursor = POINT::default();
-        let _ = unsafe { GetCursorPos(&mut cursor) };
-        let monitor = unsafe { MonitorFromPoint(cursor, MONITOR_DEFAULTTONEAREST) };
+        if !settings.enabled || (settings.hide_in_fullscreen && full_screen_app_running()) {
+            return;
+        }
+        let monitor = match settings.screen {
+            OsdScreen::Pointer => {
+                let mut cursor = POINT::default();
+                let _ = unsafe { GetCursorPos(&mut cursor) };
+                unsafe { MonitorFromPoint(cursor, MONITOR_DEFAULTTONEAREST) }
+            }
+            OsdScreen::Primary => unsafe { MonitorFromPoint(POINT::default(), MONITOR_DEFAULTTOPRIMARY) },
+        };
         let mut info = MONITORINFO {
             cbSize: size_of::<MONITORINFO>() as u32,
             ..Default::default()
@@ -129,6 +142,7 @@ impl Osd {
             OsdPosition::Bottom => work.bottom - height - (EDGE_MARGIN_BOTTOM * scale) as i32 + shadow,
         };
 
+        let alpha = (f32::from(settings.opacity) * 2.55).round() as u8;
         let screen = unsafe { GetDC(None) };
         let origin = POINT::default();
         let result = unsafe {
@@ -140,7 +154,7 @@ impl Osd {
                 Some(surface.dc),
                 Some(&origin),
                 COLORREF(0),
-                Some(&blend(255)),
+                Some(&blend(alpha)),
                 ULW_ALPHA,
             )
         };
@@ -152,6 +166,7 @@ impl Osd {
         }
         self.stop_timers();
         self.surface = Some(surface);
+        self.alpha = alpha;
         unsafe {
             let _ = ShowWindow(self.hwnd, SW_SHOWNOACTIVATE);
             // Topmost windows opened later would otherwise cover it.
@@ -164,7 +179,7 @@ impl Osd {
                 0,
                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
             );
-            SetTimer(Some(self.timer_owner), TIMER_HOLD, HOLD.as_millis() as u32, None);
+            SetTimer(Some(self.timer_owner), TIMER_HOLD, settings.duration_ms, None);
         }
     }
 
@@ -183,7 +198,7 @@ impl Osd {
                 if progress >= 1.0 {
                     self.hide();
                 } else {
-                    let alpha = (255.0 * (1.0 - progress)) as u8;
+                    let alpha = (f32::from(self.alpha) * (1.0 - progress)) as u8;
                     // Without a source DC, only the opacity changes.
                     let _ = unsafe {
                         UpdateLayeredWindow(
@@ -217,6 +232,13 @@ impl Osd {
         let _ = unsafe { KillTimer(Some(self.timer_owner), TIMER_FADE) };
         self.fade_start = None;
     }
+}
+
+/// A full-screen app, a game or a presentation, as Windows tells apps that
+/// want to stay quiet.
+fn full_screen_app_running() -> bool {
+    unsafe { SHQueryUserNotificationState() }
+        .is_ok_and(|state| [QUNS_BUSY, QUNS_RUNNING_D3D_FULL_SCREEN, QUNS_PRESENTATION_MODE].contains(&state))
 }
 
 fn system_fonts() -> Fonts {

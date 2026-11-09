@@ -1,5 +1,7 @@
 //! Matching a saved output with the outputs Windows currently reports.
 
+use crate::settings::OutputBinding;
+
 /// An audio output as reported by Windows.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeviceInfo {
@@ -40,6 +42,23 @@ pub fn resolve<'a>(id: &str, name: &str, devices: &'a [DeviceInfo]) -> Resolutio
         (None, _) if by_id.is_some() => Resolution::Unavailable,
         (None, _) => Resolution::Unknown,
     }
+}
+
+/// Index in `outputs` of the output after the default one, going round the
+/// list and skipping the ones not connected. When the default output is not
+/// in the list, the first connected one. `None` when none is connected.
+pub fn next_output(outputs: &[OutputBinding], devices: &[DeviceInfo], default_id: Option<&str>) -> Option<usize> {
+    let connected = |output: &OutputBinding| match resolve(&output.id, &output.name, devices) {
+        Resolution::Ready(device) | Resolution::Moved(device) => Some(device.id.as_str()),
+        Resolution::Unavailable | Resolution::Unknown => None,
+    };
+    let current = outputs
+        .iter()
+        .position(|o| connected(o).is_some_and(|id| Some(id) == default_id));
+    let start = current.map_or(0, |i| i + 1);
+    (0..outputs.len())
+        .map(|offset| (start + offset) % outputs.len())
+        .find(|&i| connected(&outputs[i]).is_some())
 }
 
 #[cfg(test)]
@@ -89,5 +108,55 @@ mod tests {
     fn forgotten_device_is_unknown() {
         let devices = [device("b", "Haut-parleurs", true)];
         assert_eq!(resolve("a", "Casque", &devices), Resolution::Unknown);
+    }
+
+    fn saved(id: &str, name: &str) -> OutputBinding {
+        OutputBinding {
+            id: id.into(),
+            name: name.into(),
+            hotkey: None,
+            communications: false,
+        }
+    }
+
+    #[test]
+    fn next_output_goes_round_the_connected_ones() {
+        let outputs = [saved("a", "Casque"), saved("b", "Écran"), saved("c", "Haut-parleurs")];
+        let devices = [
+            device("a", "Casque", true),
+            device("b", "Écran", false),
+            device("c", "Haut-parleurs", true),
+        ];
+        assert_eq!(next_output(&outputs, &devices, Some("a")), Some(2));
+        assert_eq!(next_output(&outputs, &devices, Some("c")), Some(0));
+    }
+
+    #[test]
+    fn next_output_starts_at_the_first_when_the_default_is_not_listed() {
+        let outputs = [saved("a", "Casque"), saved("b", "Écran")];
+        let devices = [
+            device("a", "Casque", true),
+            device("b", "Écran", true),
+            device("z", "Autre", true),
+        ];
+        assert_eq!(next_output(&outputs, &devices, Some("z")), Some(0));
+        assert_eq!(next_output(&outputs, &devices, None), Some(0));
+    }
+
+    #[test]
+    fn next_output_follows_a_moved_output() {
+        let outputs = [saved("a", "Casque"), saved("old", "Écran")];
+        let devices = [device("a", "Casque", true), device("new", "Écran", true)];
+        assert_eq!(next_output(&outputs, &devices, Some("new")), Some(0));
+        assert_eq!(next_output(&outputs, &devices, Some("a")), Some(1));
+    }
+
+    #[test]
+    fn next_output_stays_on_the_only_connected_one() {
+        let outputs = [saved("a", "Casque"), saved("b", "Écran")];
+        let devices = [device("a", "Casque", true)];
+        assert_eq!(next_output(&outputs, &devices, Some("a")), Some(0));
+        assert_eq!(next_output(&outputs, &[], Some("a")), None);
+        assert_eq!(next_output(&[], &devices, Some("a")), None);
     }
 }

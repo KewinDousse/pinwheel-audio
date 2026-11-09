@@ -9,4 +9,5 @@ pub mod i18n;
 pub mod osd;
 pub mod settings;
 pub mod status;
+pub mod update;
 pub mod volume;
