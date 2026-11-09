@@ -52,11 +52,11 @@ If you use Volume2, quit it and remove it from startup: with both running, Win +
 - Each output has its card. Open it to change or clear its hotkey, to use the output for calls as well, or to remove it from the list.
 - Changes are saved and applied right away.
 
+<img src="docs/images/settings-output.png" width="480" alt="An output's card open: its shortcut F13 with Change and Clear buttons, the switch to use it for calls as well, and Remove from the list">
+
 ### Update check
 
 At startup and once a day, Pinwheel asks GitHub for its latest release, and says so in the settings and the tray menu when a newer one is out. It never installs anything. That request is its only network access: turn it off with "Check for updates", in "About Pinwheel".
-
-<img src="docs/images/settings-output.png" width="480" alt="An output's card open: its shortcut F13 with Change and Clear buttons, the switch to use it for calls as well, and Remove from the list">
 
 ## Files
 

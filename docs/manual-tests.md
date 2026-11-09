@@ -64,7 +64,7 @@ What the automated tests do not cover. The log (`%LOCALAPPDATA%\Pinwheel\logs\pi
 - [ ] "Also for calls": the communications output changes in Windows Settings > Sound.
 - [ ] Restart the PC: every shortcut is still there.
 - [ ] Three outputs, one of them unplugged, and a "Next output" hotkey: each press goes to the next connected one, from the default output, round the list. Default output not in the list: the first connected one. None connected: the display says so.
-- [ ] "Next output" hotkey the same as an output's: both cards say so, and the output's hotkey works.
+- [ ] "Next output" hotkey the same as an output's: the "Next output" card says so, and the output's hotkey works.
 
 ## Update check
 

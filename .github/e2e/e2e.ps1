@@ -213,6 +213,16 @@ $foreground = [U]::ForegroundProcess()
 Check 'Win alone opens Start' ($foreground -match $startMenu) $foreground
 Press 0x1B
 Start-Sleep 1
+# The same with Shift held, for Win + Shift + wheel below.
+ClickAway 'before Win + Shift alone'
+[U]::Key(0x10, $false)
+Press 0x5B
+[U]::Key(0x10, $true)
+Start-Sleep 2
+$foreground = [U]::ForegroundProcess()
+Check 'Win + Shift alone opens Start' ($foreground -match $startMenu) $foreground
+Press 0x1B
+Start-Sleep 1
 
 # Win held long enough to repeat, as a physical key does, around `$use`.
 function WithWinHeld($name, [scriptblock]$use, [switch]$Shift) {

@@ -238,6 +238,11 @@ fn on_mouse(msg: u32, info: &MSLLHOOKSTRUCT) -> bool {
             post_main(WM_TOGGLE_MUTE);
             true
         }
+        // A release the hook missed must not swallow the next one.
+        WM_MBUTTONDOWN => {
+            MIDDLE_SWALLOWED.set(false);
+            false
+        }
         // Even when Win is already up.
         WM_MBUTTONUP => MIDDLE_SWALLOWED.take(),
         _ => false,

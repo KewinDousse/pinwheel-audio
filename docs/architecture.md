@@ -42,11 +42,15 @@ Low-level hooks need a message loop on their thread. `thread.rs` provides that t
 
 ### Win + Shift + wheel
 
-With Shift held too, the notches go to a count of their own, applied with steps of 1% (`settings::FINE_STEP`). The "Win + Shift + scroll" switch turns it off: the hook then leaves the event to other apps. The main thread passes both switches to the hook thread through atomics (`hook::configure`), after each reload.
+With Shift held too, the notches go to a count of their own, applied with steps of 1% (`settings::FINE_STEP`). The "Win + Shift + scroll" switch turns it off: the hook then leaves the event to other apps.
 
 ### Win + middle click
 
-With Win alone held, the hook swallows the middle button press, marks Win as used, and posts `WM_TOGGLE_MUTE`. It swallows the matching release too, even when Win is already up, so that no window gets a release without its press. Turned off, both go through.
+With Win alone held, the hook swallows the middle button press, marks Win as used, and posts `WM_TOGGLE_MUTE`. It swallows the matching release too, even when Win is already up, so that no window gets a release without its press. A middle press it lets through forgets a release it missed (the hooks reinstalled in between, or a release over an administrator window), so that the next release goes through. Turned off, both go through.
+
+### Hook switches
+
+The "Win + Shift + scroll" and "Win + middle click" switches reach the hook thread through atomics (`hook::configure`), set by the main thread at startup and after each reload.
 
 ### Path of a shortcut
 

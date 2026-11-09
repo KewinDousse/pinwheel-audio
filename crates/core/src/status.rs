@@ -18,7 +18,7 @@ pub struct Status {
 }
 
 /// Missing or unreadable means "nothing to report": the file is rewritten
-/// each time the shortcuts are registered or an update check ends.
+/// each time the shortcuts are registered or the newer release found changes.
 pub fn load(path: &Path) -> Status {
     std::fs::read_to_string(path)
         .ok()
