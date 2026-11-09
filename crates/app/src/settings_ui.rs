@@ -10,7 +10,7 @@ use crate::ipc::{self, InstanceLock, WM_PREVIEW_OSD, WM_RELOAD, wide};
 use crate::keys::{self, Capture, Captured};
 use crate::settings_theme::{self as theme, Palette, Themes};
 use crate::startup::{self, StartupState};
-use crate::{icon, language, paths};
+use crate::{icon, language, paths, window_place};
 use eframe::egui::{self, Margin, RichText};
 use pinwheel_core::devices::{DeviceInfo, Resolution, resolve};
 use pinwheel_core::hotkey::Hotkey;
@@ -20,7 +20,10 @@ use pinwheel_core::status::{self, Status};
 use pinwheel_core::volume::STEP_RANGE;
 use std::path::PathBuf;
 use std::time::{Duration, Instant, SystemTime};
+use windows::Win32::Foundation::{FILETIME, HWND, RECT};
 use windows::Win32::System::Com::{COINIT_APARTMENTTHREADED, CoInitializeEx};
+use windows::Win32::System::SystemInformation::GetSystemTimePreciseAsFileTime;
+use windows::Win32::System::Threading::{GetCurrentProcess, GetProcessTimes};
 use windows::Win32::UI::Shell::ShellExecuteW;
 use windows::Win32::UI::WindowsAndMessaging::{
     FindWindowW, SW_RESTORE, SW_SHOWNORMAL, SetForegroundWindow, ShowWindow,
@@ -56,7 +59,15 @@ pub fn run() {
         ..Default::default()
     };
     let setup = Box::new(|cc: &eframe::CreationContext| {
+        let mut app = app;
         app.themes.install(&cc.egui_ctx);
+        // The window stays hidden until its first frame is drawn.
+        app.hwnd = window_hwnd(cc);
+        // `place` stays empty, so that the first refresh saves the place
+        // even of a window never moved: Windows cascades new windows.
+        if let Some(hwnd) = app.hwnd {
+            window_place::restore(hwnd);
+        }
         Ok(Box::new(app) as Box<dyn eframe::App>)
     });
     if let Err(e) = eframe::run_native(title, options, setup) {
@@ -119,6 +130,12 @@ struct SettingsApp {
     reveal: bool,
     /// Language of the window title, updated when the setting changes.
     title_lang: Lang,
+    /// The settings window, to keep its place.
+    hwnd: Option<HWND>,
+    /// The window's normal rectangle as last saved.
+    place: Option<RECT>,
+    /// The time the window took to show is logged once.
+    shown_logged: bool,
     themes: Themes,
 }
 
@@ -164,6 +181,9 @@ impl SettingsApp {
             open: None,
             reveal: false,
             title_lang: lang,
+            hwnd: None,
+            place: None,
+            shown_logged: false,
             themes: Themes::new(),
         }
     }
@@ -239,6 +259,7 @@ impl SettingsApp {
                 }
             }
         }
+        self.save_place();
         self.status = status::load(&paths::status_file());
         self.startup = startup::state();
         self.main_running = unsafe { FindWindowW(ipc::MAIN_CLASS, PCWSTR::null()) }.is_ok();
@@ -274,6 +295,18 @@ impl SettingsApp {
                 log::error!("saving the settings failed: {e}");
                 self.error = Some((self.texts().settings_save_failed)(&e.to_string()));
             }
+        }
+    }
+
+    /// Once a second and on exit: a move or a resize shows here soon enough,
+    /// and the normal rectangle stays right while the window is minimized.
+    fn save_place(&mut self) {
+        let Some(place) = self.hwnd.and_then(window_place::current) else {
+            return;
+        };
+        if self.place != Some(place) {
+            self.place = Some(place);
+            window_place::save(place);
         }
     }
 
@@ -334,6 +367,7 @@ impl SettingsApp {
                         palette,
                         open || captured.is_some(),
                         &output.name,
+                        theme::HEADER_TWO_LINES,
                         |ui| {
                             ui.vertical(|ui| {
                                 let name = RichText::new(&output.name);
@@ -441,6 +475,7 @@ impl SettingsApp {
                     palette,
                     open,
                     t.add_output,
+                    theme::HEADER_ONE_LINE,
                     |ui| {
                         ui.label(RichText::new(format!("+  {}", t.add_output)).color(palette.accent));
                     },
@@ -489,21 +524,16 @@ impl SettingsApp {
         let mut toggled = false;
         ui.add_enabled_ui(self.capture.is_none(), |ui| {
             theme::fold_card(ui, palette, self.reveal && open, |ui| {
-                let summary = (t.wheel_summary)(i32::from(*step), osd.style.label(lang), osd.position.label(lang));
                 (toggled, ()) = theme::fold_header(
                     ui,
                     palette,
                     open,
                     &format!("Win {}", t.wheel_heading),
+                    theme::HEADER_ONE_LINE,
                     |ui| {
-                        ui.vertical(|ui| {
-                            ui.horizontal(|ui| {
-                                ui.spacing_mut().item_spacing.x = 4.0;
-                                theme::keycap(ui, palette, "Win");
-                                ui.label(t.wheel_heading);
-                            });
-                            ui.label(theme::help(palette, &summary));
-                        });
+                        ui.spacing_mut().item_spacing.x = 4.0;
+                        theme::keycap(ui, palette, "Win");
+                        ui.label(t.wheel_heading);
                     },
                     |ui| {
                         if open && ui.add_enabled(main_running, egui::Button::new(t.try_display)).clicked() {
@@ -547,18 +577,14 @@ impl SettingsApp {
         let mut startup_changed = false;
         ui.add_enabled_ui(self.capture.is_none(), |ui| {
             theme::fold_card(ui, palette, self.reveal && open, |ui| {
-                let language_name = language.map_or(t.windows_language_summary, Lang::native_name);
-                let summary = (t.general_summary)(language_name, startup);
                 (toggled, ()) = theme::fold_header(
                     ui,
                     palette,
                     open,
                     t.general_heading,
+                    theme::HEADER_ONE_LINE,
                     |ui| {
-                        ui.vertical(|ui| {
-                            ui.label(t.general_heading);
-                            ui.label(theme::help(palette, &summary));
-                        });
+                        ui.label(t.general_heading);
                     },
                     |_| {},
                 );
@@ -593,10 +619,70 @@ impl SettingsApp {
             self.toggle_fold(Fold::General);
         }
     }
+
+    fn about_section(&mut self, ui: &mut egui::Ui) {
+        let t = self.texts();
+        let palette = self.themes.palette(ui);
+        let open = self.open == Some(Fold::About);
+        let mut toggled = false;
+        ui.add_enabled_ui(self.capture.is_none(), |ui| {
+            theme::fold_card(ui, palette, self.reveal && open, |ui| {
+                (toggled, ()) = theme::fold_header(
+                    ui,
+                    palette,
+                    open,
+                    t.about_heading,
+                    theme::HEADER_ONE_LINE,
+                    |ui| {
+                        ui.label(t.about_heading);
+                    },
+                    |_| {},
+                );
+                if !open {
+                    return;
+                }
+                let repository = env!("CARGO_PKG_REPOSITORY");
+                theme::fold_row(ui, palette, t.version, None, |ui| {
+                    ui.label(env!("CARGO_PKG_VERSION"));
+                });
+                theme::fold_row(ui, palette, t.source_code, None, |ui| {
+                    ui.hyperlink_to("GitHub", repository);
+                });
+                theme::fold_row(ui, palette, t.report_problem, None, |ui| {
+                    ui.hyperlink_to(t.open_issue, format!("{repository}/issues/new/choose"));
+                });
+            });
+        });
+        if toggled {
+            self.toggle_fold(Fold::About);
+        }
+    }
 }
 
 impl eframe::App for SettingsApp {
+    fn on_exit(&mut self) {
+        self.save_place();
+    }
+
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        // eframe shows the window once the first frame is drawn, so the
+        // second one starts with the window on screen.
+        match ui.ctx().cumulative_frame_nr() {
+            0 => ui.ctx().request_repaint(),
+            1 if !self.shown_logged => {
+                self.shown_logged = true;
+                match since_process_start() {
+                    Some(elapsed) => {
+                        log::info!(
+                            "settings window shown {} ms after the process started",
+                            elapsed.as_millis()
+                        )
+                    }
+                    None => log::info!("settings window shown"),
+                }
+            }
+            _ => {}
+        }
         self.refresh();
         ui.ctx().request_repaint_after(REFRESH_EVERY);
 
@@ -624,7 +710,9 @@ impl eframe::App for SettingsApp {
                     self.add_section(ui);
                     ui.add_space(16.0);
                     self.wheel_section(ui);
+                    ui.add_space(16.0);
                     self.general_section(ui);
+                    self.about_section(ui);
                 });
             });
         });
@@ -690,6 +778,7 @@ enum Fold {
     Add,
     Wheel,
     General,
+    About,
 }
 
 enum OutputAction {
@@ -777,6 +866,26 @@ fn hotkey_messages(
     for warning in hotkey.warnings() {
         theme::fold_message(ui, palette, warning.message(lang), palette.warning);
     }
+}
+
+fn window_hwnd(cc: &eframe::CreationContext) -> Option<HWND> {
+    use eframe::wgpu::rwh::{HasWindowHandle, RawWindowHandle};
+    match cc.window_handle().ok()?.as_raw() {
+        RawWindowHandle::Win32(handle) => Some(HWND(handle.hwnd.get() as *mut _)),
+        _ => None,
+    }
+}
+
+/// From the creation of this process, which counts what loading the
+/// executable costs.
+fn since_process_start() -> Option<Duration> {
+    let mut creation = FILETIME::default();
+    let (mut exit, mut kernel, mut user) = (FILETIME::default(), FILETIME::default(), FILETIME::default());
+    unsafe { GetProcessTimes(GetCurrentProcess(), &mut creation, &mut exit, &mut kernel, &mut user) }.ok()?;
+    let now = unsafe { GetSystemTimePreciseAsFileTime() };
+    let ticks = |t: FILETIME| (u64::from(t.dwHighDateTime) << 32) | u64::from(t.dwLowDateTime);
+    // FILETIME counts 100 ns ticks.
+    Some(Duration::from_nanos(ticks(now).checked_sub(ticks(creation))? * 100))
 }
 
 fn file_time(path: &std::path::Path) -> Option<SystemTime> {

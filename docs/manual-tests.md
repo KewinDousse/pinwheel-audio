@@ -42,7 +42,9 @@ What the automated tests do not cover. The log (`%LOCALAPPDATA%\Pinwheel\logs\pi
 
 - [ ] Windows in dark mode, then in light mode (Settings > Personalization > Colors): the window follows, text stays readable, switches, slider and selected choices take the accent colour.
 - [ ] Open each card by clicking its title: it opens at once, and the card open before closes.
-- [ ] Closed, the "Win + wheel" and "General" cards show their current values; change one and the summary follows.
+- [ ] Move and resize the window, close it, open it again: same place, same size. The same after closing it while minimized (right click on its taskbar button, "Close window"). Closed while maximized, it opens at its normal size and place. Opened again and maximized, it fills the screen it is on. With two screens of different scales (100% and 150%), close it on the other screen, open it again: same place, same size, and no "the settings window is at" line in the log. Unplug the screen it was on, open it again: it shows on another screen.
+- [ ] On a machine with a graphics card, the log does not say "Software rasterizer detected".
+- [ ] In "About Pinwheel", "GitHub" and "Open an issue" open the repository and the new issue page in the browser.
 - [ ] The output Windows uses right now is marked "Default output"; switch with a shortcut and the mark follows within a second.
 - [ ] Make the window narrow: titles and controls do not overlap.
 

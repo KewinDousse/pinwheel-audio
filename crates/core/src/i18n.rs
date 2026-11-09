@@ -90,7 +90,6 @@ pub struct Texts {
 
     /// Follows a drawn Win key: "+ wheel changes the volume".
     pub wheel_heading: &'static str,
-    pub wheel_summary: fn(step: i32, style: &str, position: &str) -> String,
     pub volume_step: &'static str,
     pub style: &'static str,
     pub position: &'static str,
@@ -103,13 +102,17 @@ pub struct Texts {
     pub try_display: &'static str,
 
     pub general_heading: &'static str,
-    pub general_summary: fn(language: &str, starts_at_sign_in: bool) -> String,
-    pub windows_language_summary: &'static str,
     pub startup_checkbox: &'static str,
     pub startup_failed: fn(error: &str) -> String,
     pub startup_disabled_by_windows: &'static str,
     pub logs: &'static str,
     pub open_folder: &'static str,
+
+    pub about_heading: &'static str,
+    pub version: &'static str,
+    pub source_code: &'static str,
+    pub report_problem: &'static str,
+    pub open_issue: &'static str,
 
     pub tray_settings: &'static str,
     pub tray_quit: &'static str,
@@ -166,7 +169,6 @@ pub const ENGLISH: Texts = Texts {
     shift: "Shift",
 
     wheel_heading: "+ wheel changes the volume",
-    wheel_summary: |step, style, position| format!("{step}% per notch · {style}, {}", position.to_lowercase()),
     volume_step: "Step per notch",
     style: "Display style",
     position: "Position",
@@ -179,20 +181,17 @@ pub const ENGLISH: Texts = Texts {
     try_display: "Try the display",
 
     general_heading: "General",
-    general_summary: |language, on| {
-        let startup = if on {
-            "Starts when you sign in"
-        } else {
-            "Not started when you sign in"
-        };
-        format!("{language} · {startup}")
-    },
-    windows_language_summary: "Windows language",
     startup_checkbox: "Start Pinwheel when I sign in",
     startup_failed: |error| format!("Could not change the startup entry: {error}"),
     startup_disabled_by_windows: "Turned off in the Windows startup apps. Turning it on here turns it back on.",
     logs: "Logs",
     open_folder: "Open folder",
+
+    about_heading: "About Pinwheel",
+    version: "Version",
+    source_code: "Source code",
+    report_problem: "Report a problem",
+    open_issue: "Open an issue",
 
     tray_settings: "Settings",
     tray_quit: "Quit Pinwheel",
@@ -249,7 +248,6 @@ pub const FRENCH: Texts = Texts {
     shift: "Maj",
 
     wheel_heading: "+ molette règle le volume",
-    wheel_summary: |step, style, position| format!("{step} % par cran · {style} {}", position.to_lowercase()),
     volume_step: "Pas par cran",
     style: "Style de l'affichage",
     position: "Position",
@@ -262,20 +260,17 @@ pub const FRENCH: Texts = Texts {
     try_display: "Essayer l'affichage",
 
     general_heading: "Général",
-    general_summary: |language, on| {
-        let startup = if on {
-            "Lancé à l'ouverture de session"
-        } else {
-            "Pas lancé à l'ouverture de session"
-        };
-        format!("{language} · {startup}")
-    },
-    windows_language_summary: "Langue de Windows",
     startup_checkbox: "Lancer Pinwheel à l'ouverture de session",
     startup_failed: |error| format!("Modification du démarrage impossible : {error}"),
     startup_disabled_by_windows: "Désactivé dans les applications de démarrage de Windows. L'activer ici le réactive.",
     logs: "Journaux",
     open_folder: "Ouvrir le dossier",
+
+    about_heading: "À propos de Pinwheel",
+    version: "Version",
+    source_code: "Code source",
+    report_problem: "Signaler un problème",
+    open_issue: "Ouvrir un ticket",
 
     tray_settings: "Paramètres",
     tray_quit: "Quitter Pinwheel",
@@ -304,17 +299,5 @@ mod tests {
     fn formats_with_each_language_typography() {
         assert_eq!((ENGLISH.percent)(40), "40%");
         assert_eq!((FRENCH.percent)(40), "40 %");
-    }
-
-    #[test]
-    fn summarises_the_wheel_settings_as_a_sentence() {
-        assert_eq!(
-            (ENGLISH.wheel_summary)(10, "Pill", "Bottom"),
-            "10% per notch · Pill, bottom"
-        );
-        assert_eq!(
-            (FRENCH.wheel_summary)(10, "Pilule", "En bas"),
-            "10 % par cran · Pilule en bas"
-        );
     }
 }

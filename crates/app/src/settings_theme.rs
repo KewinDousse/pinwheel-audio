@@ -15,8 +15,10 @@ use std::sync::Arc;
 const SEMIBOLD: &str = "semibold";
 const CARD_RADIUS: u8 = 6;
 const CONTROL_RADIUS: u8 = 4;
-/// Fits two lines of text, or a keycap above a line.
-const HEADER_HEIGHT: f32 = 60.0;
+/// Height of a [`fold_header`] holding one line, keycaps included.
+pub const HEADER_ONE_LINE: f32 = 52.0;
+/// Height of a [`fold_header`] holding two lines.
+pub const HEADER_TWO_LINES: f32 = 60.0;
 
 /// Colours of one theme, for what the egui visuals do not cover.
 pub struct Palette {
@@ -250,7 +252,8 @@ pub fn fold_card<R>(ui: &mut egui::Ui, palette: &Palette, reveal: bool, add: imp
 /// left to right and centred (wrap two lines in `ui.vertical`), `controls`
 /// then a chevron on the right, laid out right to left. A click outside the
 /// controls returns `true`, to open or close it. `name` is what screen
-/// readers announce for it.
+/// readers announce for it, `height` one of [`HEADER_ONE_LINE`] and
+/// [`HEADER_TWO_LINES`].
 ///
 /// The line has a fixed height so that its click area is known before its
 /// content is laid out: allocated first, it stays under the controls, and it
@@ -260,10 +263,11 @@ pub fn fold_header<R>(
     palette: &Palette,
     open: bool,
     name: &str,
+    height: f32,
     title: impl FnOnce(&mut egui::Ui),
     controls: impl FnOnce(&mut egui::Ui) -> R,
 ) -> (bool, R) {
-    let size = egui::vec2(ui.available_width(), HEADER_HEIGHT);
+    let size = egui::vec2(ui.available_width(), height);
     let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
     response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::DisclosureTriangle, ui.is_enabled(), name));
     if response.hovered() && ui.is_enabled() {
@@ -461,16 +465,27 @@ pub fn warning_banner(ui: &mut egui::Ui, palette: &Palette, add: impl FnOnce(&mu
         });
 }
 
-/// A key of a shortcut, drawn as a keycap.
+/// A key of a shortcut, drawn as a keycap as high as a button. Its size is
+/// fixed, so that it does not stretch to the height of its line.
 pub fn keycap(ui: &mut egui::Ui, palette: &Palette, text: &str) {
-    egui::Frame::new()
-        .fill(palette.control)
-        .stroke(Stroke::new(1.0, palette.control_stroke))
-        .corner_radius(CornerRadius::same(CONTROL_RADIUS))
-        .inner_margin(Margin::symmetric(8, 3))
-        .show(ui, |ui| {
-            ui.label(RichText::new(text).color(palette.text));
-        });
+    let galley = ui
+        .painter()
+        .layout_no_wrap(text.to_owned(), TextStyle::Body.resolve(ui.style()), palette.text);
+    let size = egui::vec2(galley.size().x + 16.0, ui.spacing().interact_size.y);
+    let (rect, response) = ui.allocate_exact_size(size, egui::Sense::hover());
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, ui.is_enabled(), text));
+    if ui.is_rect_visible(rect) {
+        let stroke = Stroke::new(1.0, palette.control_stroke);
+        let painter = ui.painter();
+        painter.rect(
+            rect,
+            CornerRadius::same(CONTROL_RADIUS),
+            palette.control,
+            stroke,
+            StrokeKind::Inside,
+        );
+        painter.galley(rect.center() - galley.size() / 2.0, galley, palette.text);
+    }
 }
 
 /// The Windows 11 on/off switch.

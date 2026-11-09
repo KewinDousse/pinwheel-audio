@@ -53,6 +53,16 @@ Pinwheel has no installer. The background process writes `Pinwheel.lnk` in the u
 
 When the settings window does not open at startup (every start but the first), the display shows "Pinwheel started" with the app icon, so a start is never silent. The icon comes from `res/pinwheel.ico` (`crates/app/src/icon.rs`), and the renderer draws the smallest of its images that covers the needed size.
 
+## Settings window start
+
+Each opening starts a process, so the window's start time is what the user waits for. The log gives it ("settings window shown N ms after the process started").
+
+- wgpu is built with DirectX 12 only (`crates/app/Cargo.toml`): with its default backends, it also starts Vulkan and OpenGL at each opening. OpenGL alone (eframe's `glow`) is not an option, as Windows can lack OpenGL 3.3 (remote sessions, basic display driver, the CI runner). Without a DirectX 12 driver, wgpu falls back to WARP, Windows' software renderer, and the log says "Software rasterizer detected".
+
+## Settings window place
+
+The window opens where it was closed, with the same size (`crates/app/src/window_place.rs`). Windows' window placement gives the normal rectangle even while the window is minimized or maximized, where its current rectangle is off-screen or covers the screen. The window saves it at its first refresh, then once a second when it changed, and on exit, in `%LOCALAPPDATA%\Pinwheel\window.txt`; the file is local, as screens differ from one machine to the next. At the next opening, the rectangle is set back while the window is still hidden, twice so that a screen of another scale does not scale the size, and Windows moves it onto a screen if that one is gone. Only the normal rectangle is kept: a window closed maximized opens at its normal size, and a snapped one at its place from before the snap.
+
 ## Settings window look
 
 `crates/app/src/settings_theme.rs` follows the Windows 11 Settings app: Segoe UI Variable (Segoe UI before Windows 11) read from the Windows fonts, controls on the right, on/off switches, the shortcut's keys drawn as keycaps, and the accent colour of Windows (`AccentLight2` in the dark theme, `AccentDark1` in the light one). Both themes are set, and egui follows the one of Windows.
@@ -61,8 +71,8 @@ When the settings window does not open at startup (every start but the first), t
 
 The window shows little at once, so that it reads at a glance:
 
-- One card per output, then "Add an output", then a "Win + wheel" card (step, display style and position) and a "General" card (language, startup, logs).
-- Each card folds. Closed, it shows what matters day to day: an output's name, its state, whether it is the default output of Windows (`Audio::default_output_id`, read every second) and its keys; the other cards a one-line summary of their values. A click on the card opens it, and scrolls it into view; one card is open at a time.
+- Three groups, apart: the outputs then "Add an output"; a "Win + wheel" card (step, display style and position); a "General" card (language, startup, logs) then "About Pinwheel" (version, links to the source code and to a new issue).
+- Each card folds. Closed, an output's card shows what matters day to day: its name, its state, whether it is the default output of Windows (`Audio::default_output_id`, read every second) and its keys. The other cards show their title only: a summary of their values would repeat what opening them shows. A click on the card opens it, and scrolls it into view; one card is open at a time.
 - The rare actions (change or clear a shortcut, the calls option, remove the output) are inside the open card. Remove is at its bottom, away from the header, so that a double click opening the card cannot remove the output.
 - A shortcut's error or warning shows on its card, open or closed, and only when there is one.
 - During a capture, the box waiting for keys takes the place of the shortcut and the other cards are disabled.
