@@ -61,7 +61,7 @@ The "Win + Shift + scroll" and "Win + middle click" switches reach the hook thre
 
 ### Next output shortcut
 
-A shortcut of its own (`Slot::NextOutput`, identifier `0xBFFF`) makes the next output of the list the default one (`devices::next_output`): the first connected one after the current default, going round the list, or the first connected one when the default output is not in the list. An unplugged output that resolves to the default device, through a connected one of the same name, is skipped too, so that the shortcut cannot stay on the same device. With none connected, the display says so. It is registered after the outputs' shortcuts, and not at all when one of them has the same combination: the settings window says so.
+A shortcut of its own (`Slot::NextOutput`, identifier `0xBFFF`) makes the next output of the list the default one (`devices::next_output`): the first connected one after the current default, going round the list, or the first connected one when the default output is not in the list. An unplugged output that would resolve to a connected one of the list, through their shared name, counts as not connected: switching to it would give it that one's ID (see [ADR 0004](adr/0004-output-identity.md)), and the shortcut would stay on the same device. With none connected, the display says so. It is registered after the outputs' shortcuts, and not at all when one of them has the same combination: the settings window says so.
 
 ## Update check
 

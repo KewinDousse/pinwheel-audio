@@ -24,6 +24,7 @@ public static class U {
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
   [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int cmd);
   [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint flags);
+  [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr h, uint msg, IntPtr w, IntPtr l);
   public static string ForegroundProcess() {
     uint pid; GetWindowThreadProcessId(GetForegroundWindow(), out pid);
     try { return System.Diagnostics.Process.GetProcessById((int)pid).ProcessName; } catch { return "?"; }
@@ -221,7 +222,7 @@ function AudioCalls { if (Test-Path $log) { @(Select-String -Path $log -SimpleMa
 # Win held long enough to repeat, as a physical key does, around `$use`.
 # Windows does not open Start when Shift is held with Win, so Start is
 # only checked without it.
-function WithWinHeld($name, [scriptblock]$use, [switch]$Shift) {
+function WithWinHeld($name, [scriptblock]$use, [switch]$Shift, [switch]$LeftToOthers) {
   ClickAway "before $name"
   $calls = AudioCalls
   if ($Shift) { [U]::Key(0x10, $false) }
@@ -232,7 +233,11 @@ function WithWinHeld($name, [scriptblock]$use, [switch]$Shift) {
   [U]::Key(0x5B, $true)
   if ($Shift) { [U]::Key(0x10, $true) }
   Start-Sleep 2
-  Check "$name reaches Pinwheel" ((AudioCalls) -gt $calls)
+  if ($LeftToOthers) {
+    Check "$name left to other apps" ((AudioCalls) -eq $calls)
+  } else {
+    Check "$name reaches Pinwheel" ((AudioCalls) -gt $calls)
+  }
   if ($Shift) { return }
   $foreground = [U]::ForegroundProcess()
   Check "Start stays closed after $name" ($foreground -notmatch $startMenu) $foreground
@@ -241,6 +246,20 @@ function WithWinHeld($name, [scriptblock]$use, [switch]$Shift) {
 WithWinHeld 'Win + wheel' { [U]::Wheel(120); Start-Sleep -Milliseconds 100; [U]::Wheel(120) }
 WithWinHeld 'Win + Shift + wheel' { [U]::Wheel(120) } -Shift
 WithWinHeld 'Win + middle click' { [U]::MiddleClick() }
+
+# Win + Shift + scroll turned off: Shift has a path of its own, which
+# follows its switch. The settings are written as the settings window
+# would, then the background process told to reload them (WM_APP + 2).
+function SetFineStep($on) {
+  $s = Saved
+  $s | Add-Member -NotePropertyName fine_step -NotePropertyValue $on -Force
+  $s | ConvertTo-Json -Depth 10 | Set-Content $settingsFile
+  [U]::PostMessage([U]::FindWindow('Pinwheel.Main', [NullString]::Value), 0x8002, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
+  Start-Sleep 2
+}
+SetFineStep $false
+WithWinHeld 'Win + Shift + wheel, turned off,' { [U]::Wheel(120) } -Shift -LeftToOthers
+SetFineStep $true
 
 # Closed while minimized, as from the taskbar, the window keeps its normal
 # place for the next opening, here in the dark theme.

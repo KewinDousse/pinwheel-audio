@@ -64,7 +64,7 @@ At startup and once a day, Pinwheel asks GitHub for its latest release, and says
 |:--|:--|
 | `%APPDATA%\Pinwheel\settings.json` | Settings |
 | `%LOCALAPPDATA%\Pinwheel\logs\pinwheel.log` | Log ("Open folder" next to Logs, in the General card) |
-| `%LOCALAPPDATA%\Pinwheel\status.json` | Shortcuts Windows refused and the newer release, read by the settings window |
+| `%LOCALAPPDATA%\Pinwheel\status.json` | Hotkeys Windows refused and the newer release, read by the settings window |
 | `%LOCALAPPDATA%\Pinwheel\window.txt` | Position and size of the settings window |
 
 An unreadable settings file is renamed to `settings.json.<timestamp>.bak` instead of being overwritten.

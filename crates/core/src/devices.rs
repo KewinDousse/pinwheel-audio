@@ -46,14 +46,18 @@ pub fn resolve<'a>(id: &str, name: &str, devices: &'a [DeviceInfo]) -> Resolutio
 
 /// Index in `outputs` of the output after the default one, going round the
 /// list and skipping the ones not connected, and those that are the default
-/// device too (an unplugged output can resolve to a connected one of the
-/// same name). When the default output is not in the list, the first
+/// device too. When the default output is not in the list, the first
 /// connected one. The default one when no other is connected, `None` when
 /// none is.
+///
+/// An unplugged output whose name a connected one of the list shares
+/// counts as not connected: it would resolve to that one, and switching to
+/// it would give it that one's ID.
 pub fn next_output(outputs: &[OutputBinding], devices: &[DeviceInfo], default_id: Option<&str>) -> Option<usize> {
     let device = |output: &OutputBinding| match resolve(&output.id, &output.name, devices) {
-        Resolution::Ready(device) | Resolution::Moved(device) => Some(device.id.as_str()),
-        Resolution::Unavailable | Resolution::Unknown => None,
+        Resolution::Ready(device) => Some(device.id.as_str()),
+        Resolution::Moved(device) if !outputs.iter().any(|o| o.id == device.id) => Some(device.id.as_str()),
+        Resolution::Moved(_) | Resolution::Unavailable | Resolution::Unknown => None,
     };
     let is_default = |output: &OutputBinding| device(output).is_some_and(|id| Some(id) == default_id);
     let current = outputs.iter().position(is_default);
@@ -162,6 +166,18 @@ mod tests {
             device("b", "Casque", false),
             device("c", "Haut-parleurs", true),
         ];
+        assert_eq!(next_output(&outputs, &devices, Some("a")), Some(2));
+    }
+
+    #[test]
+    fn next_output_skips_an_unplugged_twin_of_another_listed_output() {
+        let outputs = [saved("b", "Casque"), saved("a", "Casque"), saved("c", "Haut-parleurs")];
+        let devices = [
+            device("a", "Casque", true),
+            device("b", "Casque", false),
+            device("c", "Haut-parleurs", true),
+        ];
+        assert_eq!(next_output(&outputs, &devices, Some("c")), Some(1));
         assert_eq!(next_output(&outputs, &devices, Some("a")), Some(2));
     }
 
