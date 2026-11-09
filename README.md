@@ -5,7 +5,7 @@
 <h1 align="center">Pinwheel</h1>
 
 <p align="center">
-  <b>Win + scroll to change volume, one hotkey per audio output.</b><br>
+  <b><kbd>⊞ Win</kbd> + scroll to change volume, one hotkey per audio output.</b><br>
   A small Windows 10/11 app that sits in the notification area.
 </p>
 
@@ -25,13 +25,13 @@
 
 ## What it does
 
-- **Win + mouse wheel** changes the volume of the default output, 10% per notch (adjustable).
-- **One shortcut per output** makes it the default output: speakers on one key, headphones on another. Any key or combination works, media and macro keys included.
+- **<kbd>⊞ Win</kbd> + scroll** changes the volume of the default output, 10% per wheel notch (adjustable).
+- **One hotkey per output** makes it the default output: speakers on one key, headphones on another. Any key or combination works, media and macro keys included.
 - **An on-screen display** shows the volume or the new output for 1 s, then fades out. Three styles: thin bar, pill, big number.
 
 <img src="docs/images/display.png" width="760" alt="The volume display in its three styles, pill, thin bar and big number, and the announcement of a new output: dark panels with a light blue gauge">
 
-If you used Volume2 for the wheel and Audio Switcher for output shortcuts, Pinwheel does both, and nothing more. The interface is in English or French: it follows the Windows display language, and can be changed in the settings.
+If you used Volume2 for Win + scroll and Audio Switcher for output hotkeys, Pinwheel does both, and nothing more. The interface is in English or French: it follows the Windows display language, and can be changed in the settings.
 
 ## Install
 
@@ -41,7 +41,7 @@ If you used Volume2 for the wheel and Audio Switcher for output shortcuts, Pinwh
 
 The executable is not code-signed, so SmartScreen may warn about it on the first run: click "More info", then "Run anyway". Each release comes with a `pinwheel.exe.sha256` file to check the download.
 
-If you use Volume2, quit it and remove it from startup: with both running, Win + wheel would change the volume twice.
+If you use Volume2, quit it and remove it from startup: with both running, Win + scroll would change the volume twice.
 
 ## Use
 
@@ -49,7 +49,7 @@ If you use Volume2, quit it and remove it from startup: with both running, Win +
 
 - Click the tray icon to open the settings. Right-click for the menu (Settings, Quit).
 - Running `pinwheel.exe` again while it runs also opens the settings.
-- Each output has its card. Open it to change or clear its shortcut, to use the output for calls as well, or to remove it from the list.
+- Each output has its card. Open it to change or clear its hotkey, to use the output for calls as well, or to remove it from the list.
 - Changes are saved and applied right away.
 
 <img src="docs/images/settings-output.png" width="480" alt="An output's card open: its shortcut F13 with Change and Clear buttons, the switch to use it for calls as well, and Remove from the list">
