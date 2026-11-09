@@ -1,22 +1,43 @@
-# Pinwheel
+<p align="center">
+  <img src="docs/images/logo.png" width="128" height="128" alt="The Pinwheel logo: white pedestrian crossing stripes in an X on a magenta tile, with a yellow centre">
+</p>
 
-A small Windows 10/11 utility that lives in the notification area:
+<h1 align="center">Pinwheel</h1>
 
-- **Win + mouse wheel** changes the volume of the default audio output, 10% per notch (adjustable).
-- **One shortcut per audio output** makes it the default output. Any key or key combination works, media and macro keys included.
+<p align="center">
+  <b>Win + wheel for the volume, one key per audio output.</b><br>
+  A small Windows 10/11 app that sits in the notification area.
+</p>
+
+<p align="center">
+  <a href="https://github.com/KewinDousse/pinwheel-audio/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/KewinDousse/pinwheel-audio"></a>
+  <a href="https://github.com/KewinDousse/pinwheel-audio/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/KewinDousse/pinwheel-audio/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/github/license/KewinDousse/pinwheel-audio"></a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/KewinDousse/pinwheel-audio/releases/latest/download/pinwheel.exe"><b>Download pinwheel.exe</b></a>
+</p>
+
+<p align="center">
+  <img src="docs/images/settings.png" width="640" alt="The settings window, in French: two outputs with their keys F13 and F14, the first one marked as the default output, then the Win + wheel card open on the step, display style and position, and the General card">
+</p>
+
+## What it does
+
+- **Win + mouse wheel** changes the volume of the default output, 10% per notch (adjustable).
+- **One shortcut per output** makes it the default output: speakers on one key, headphones on another. Any key or combination works, media and macro keys included.
 - **An on-screen display** shows the volume or the new output for 1 s, then fades out. Three styles: thin bar, pill, big number.
-
-The interface is in English or French. It follows the Windows display language, and can be changed in the settings.
 
 <img src="docs/images/display.png" width="760" alt="The volume display in its three styles, pill, thin bar and big number, and the announcement of a new output: dark panels with a light blue gauge">
 
-<img src="docs/images/icon.png" width="760" alt="The Pinwheel icon, white pedestrian crossing stripes in an X on a magenta tile with a yellow centre, and the same icon at 16 px in the notification area">
+If you used Volume2 for the wheel and Audio Switcher for output shortcuts, Pinwheel does both, and nothing more. The interface is in English or French: it follows the Windows display language, and can be changed in the settings.
 
 ## Install
 
-1. Download `pinwheel.exe` from the [releases](https://github.com/KewinDousse/pinwheel-audio/releases) and put it in a local folder, such as `%LOCALAPPDATA%\Programs\Pinwheel\`. Windows often blocks executables started from a network share.
+1. Download `pinwheel.exe` from the [latest release](https://github.com/KewinDousse/pinwheel-audio/releases/latest) and put it in a local folder, such as `%LOCALAPPDATA%\Programs\Pinwheel\`. Windows often blocks executables started from a network share.
 2. Run it. The settings window opens on the first run.
-3. Tick "Start Pinwheel when I sign in" to start it automatically.
+3. Turn on "Start Pinwheel when I sign in", in the General card, to start it automatically.
 
 The executable is not code-signed, so SmartScreen may warn about it on the first run: click "More info", then "Run anyway". Each release comes with a `pinwheel.exe.sha256` file to check the download.
 
@@ -24,16 +45,21 @@ If you use Volume2, quit it and remove it from startup: with both running, Win +
 
 ## Use
 
+<img src="docs/images/tray.png" width="180" alt="The Pinwheel icon in the notification area, next to the network and volume icons and the clock">
+
 - Click the tray icon to open the settings. Right-click for the menu (Settings, Quit).
 - Running `pinwheel.exe` again while it runs also opens the settings.
+- Each output has its card. Open it to change or clear its shortcut, to use the output for calls as well, or to remove it from the list.
 - Changes are saved and applied right away.
+
+<img src="docs/images/settings-output.png" width="480" alt="An output's card open, in French: its shortcut F13 with Change and Clear buttons, the switch to use it for calls as well, and Remove from the list">
 
 ## Files
 
 | File | Content |
 |:--|:--|
 | `%APPDATA%\Pinwheel\settings.json` | Settings |
-| `%LOCALAPPDATA%\Pinwheel\logs\pinwheel.log` | Log ("Open the log folder" button) |
+| `%LOCALAPPDATA%\Pinwheel\logs\pinwheel.log` | Log ("Open folder" next to Logs, in the General card) |
 | `%LOCALAPPDATA%\Pinwheel\status.json` | Shortcuts Windows refused, read by the settings window |
 
 An unreadable settings file is renamed to `settings.json.<timestamp>.bak` instead of being overwritten.
