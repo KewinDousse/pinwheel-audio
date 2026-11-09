@@ -108,12 +108,15 @@ function ClickAway($when) {
 }
 # Windows cascades new windows, sometimes behind the taskbar, where a click
 # opens Search. Clear of the taskbar, and of (10, 10) where ClickAway clicks.
-function OpenSettings {
+function MoveSettings($x, $y) {
+  # SWP_NOSIZE | SWP_NOZORDER
+  [U]::SetWindowPos([U]::FindWindow([NullString]::Value, $title), [IntPtr]::Zero, $x, $y, 0, 0, 5) | Out-Null
+  Start-Sleep 1
+}
+function OpenSettings([switch]$WherePlaced) {
   Start-Process $Exe -ArgumentList '--settings'
   Start-Sleep 8
-  # SWP_NOSIZE | SWP_NOZORDER
-  [U]::SetWindowPos([U]::FindWindow([NullString]::Value, $title), [IntPtr]::Zero, 200, 0, 0, 0, 5) | Out-Null
-  Start-Sleep 1
+  if (-not $WherePlaced) { MoveSettings 200 0 }
 }
 function Saved { Get-Content $settingsFile -Raw | ConvertFrom-Json }
 $log = Join-Path $env:LOCALAPPDATA 'Pinwheel\logs\pinwheel.log'
@@ -141,6 +144,7 @@ $cards = [ordered]@{
   '+  Add an output'           = 'No output connected.'
   '+ wheel changes the volume' = 'Step per notch'
   'General'                    = 'Open folder'
+  'About Pinwheel'             = 'Report a problem'
 }
 $previous = $null
 foreach ($card in $cards.Keys) {
@@ -149,10 +153,11 @@ foreach ($card in $cards.Keys) {
   if ($previous) { Check "'$card' closes the card open before" (-not (Find $previous)) }
   $previous = $cards[$card]
 }
-$button = Find 'Open folder'
-$bottom = if ($button) { (WindowRect).B - $button.Current.BoundingRectangle.Bottom } else { -1 }
-Check 'the open card scrolls into view' ($bottom -gt 0) "button bottom $bottom px from the window's"
-ClickOn 'General' | Out-Null
+# The last card, open, goes past the window's bottom with four outputs.
+$row = Find 'Report a problem'
+$bottom = if ($row) { (WindowRect).B - $row.Current.BoundingRectangle.Bottom } else { -1 }
+Check 'the open card scrolls into view' ($bottom -gt 0) "last row bottom $bottom px from the window's"
+ClickOn 'About Pinwheel' | Out-Null
 
 # Shortcut capture: Ctrl+Alt+1 is saved.
 ClickOn 'Set a key' | Out-Null
@@ -199,15 +204,29 @@ $foreground = [U]::ForegroundProcess()
 Check 'Start stays closed after Win + wheel' ($foreground -notmatch $startMenu) $foreground
 if ($foreground -match $startMenu) { Press 0x1B }
 
-# The same window in the dark theme.
-Get-Process pinwheel | Where-Object { $_.MainWindowTitle -eq $title } | Stop-Process
-Set-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize' AppsUseLightTheme 0
+# Closed, the window keeps its place for the next opening, here in the dark
+# theme.
+MoveSettings 260 20
+$before = WindowRect
+Get-Process pinwheel | Where-Object { $_.MainWindowTitle -eq $title } | ForEach-Object { $_.CloseMainWindow() | Out-Null }
 Start-Sleep 2
-OpenSettings
+Check 'window place saved' (Test-Path (Join-Path $env:LOCALAPPDATA 'Pinwheel\window.ron'))
+Set-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize' AppsUseLightTheme 0
+OpenSettings -WherePlaced
+$after = WindowRect
+$moved = "from $($before.L),$($before.T) $($before.R - $before.L)x$($before.B - $before.T) to $($after.L),$($after.T) $($after.R - $after.L)x$($after.B - $after.T)"
+Write-Host "      window $moved"
+$same = [Math]::Abs($after.L - $before.L) -le 2 -and [Math]::Abs($after.T - $before.T) -le 2 -and
+  [Math]::Abs(($after.R - $after.L) - ($before.R - $before.L)) -le 2 -and [Math]::Abs(($after.B - $after.T) - ($before.B - $before.T)) -le 2
+Check 'the window opens where it was closed' $same $moved
 if (ClickOn 'Test output') { Shot 'dark-output-open' }
 if (ClickOn '+ wheel changes the volume') { Shot 'dark-wheel-open' }
 
-if (Test-Path $log) { Copy-Item $log $out }
+Check 'opening time logged' (LogHas 'settings window ready')
+if (Test-Path $log) {
+  Select-String -Path $log -SimpleMatch 'settings window ready' | ForEach-Object { Write-Host "      $($_.Line)" }
+  Copy-Item $log $out
+}
 Get-Process pinwheel -ErrorAction SilentlyContinue | Stop-Process
 if ($failures.Count) { "$($failures.Count) check(s) failed"; exit 1 }
 "all checks passed"

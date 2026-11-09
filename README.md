@@ -61,6 +61,7 @@ If you use Volume2, quit it and remove it from startup: with both running, Win +
 | `%APPDATA%\Pinwheel\settings.json` | Settings |
 | `%LOCALAPPDATA%\Pinwheel\logs\pinwheel.log` | Log ("Open folder" next to Logs, in the General card) |
 | `%LOCALAPPDATA%\Pinwheel\status.json` | Shortcuts Windows refused, read by the settings window |
+| `%LOCALAPPDATA%\Pinwheel\window.ron` | Position and size of the settings window |
 
 An unreadable settings file is renamed to `settings.json.<timestamp>.bak` instead of being overwritten.
 
@@ -83,7 +84,7 @@ cargo run -p pinwheel-core --example osd-preview -- preview.png <font.ttf> [bold
 
 The `osd-preview` example draws every display style, in both languages, into one image.
 
-On Windows, the CI's `e2e` job runs the exe on the runner's desktop and drives it with real keys and clicks ([`.github/e2e/e2e.ps1`](.github/e2e/e2e.ps1)): the Start menu entry, each card opening alone, the shortcut capture, Escape, a saved shortcut, and Win + wheel keeping Start closed while Win alone opens it. Its screenshots of the settings window are in the run's `e2e` artifact. The runner has no audio device, so what needs one follows [`docs/manual-tests.md`](docs/manual-tests.md).
+On Windows, the CI's `e2e` job runs the exe on the runner's desktop and drives it with real keys and clicks ([`.github/e2e/e2e.ps1`](.github/e2e/e2e.ps1)): the Start menu entry, each card opening alone, the window opening where it was closed, the shortcut capture, Escape, a saved shortcut, and Win + wheel keeping Start closed while Win alone opens it. Its screenshots of the settings window are in the run's `e2e` artifact. The runner has no audio device, so what needs one follows [`docs/manual-tests.md`](docs/manual-tests.md).
 
 ### Build the Windows executable
 

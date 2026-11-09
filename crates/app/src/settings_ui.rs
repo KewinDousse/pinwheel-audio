@@ -20,7 +20,10 @@ use pinwheel_core::status::{self, Status};
 use pinwheel_core::volume::STEP_RANGE;
 use std::path::PathBuf;
 use std::time::{Duration, Instant, SystemTime};
+use windows::Win32::Foundation::FILETIME;
 use windows::Win32::System::Com::{COINIT_APARTMENTTHREADED, CoInitializeEx};
+use windows::Win32::System::SystemInformation::GetSystemTimeAsFileTime;
+use windows::Win32::System::Threading::{GetCurrentProcess, GetProcessTimes};
 use windows::Win32::UI::Shell::ShellExecuteW;
 use windows::Win32::UI::WindowsAndMessaging::{
     FindWindowW, SW_RESTORE, SW_SHOWNORMAL, SetForegroundWindow, ShowWindow,
@@ -53,6 +56,9 @@ pub fn run() {
     }
     let options = eframe::NativeOptions {
         viewport,
+        // eframe keeps the window's position and size there, and puts the
+        // window back on a screen when that one is gone.
+        persistence_path: Some(paths::window_file()),
         ..Default::default()
     };
     let setup = Box::new(|cc: &eframe::CreationContext| {
@@ -119,6 +125,8 @@ struct SettingsApp {
     reveal: bool,
     /// Language of the window title, updated when the setting changes.
     title_lang: Lang,
+    /// The first frame is logged with the time it took to come.
+    first_frame_logged: bool,
     themes: Themes,
 }
 
@@ -164,6 +172,7 @@ impl SettingsApp {
             open: None,
             reveal: false,
             title_lang: lang,
+            first_frame_logged: false,
             themes: Themes::new(),
         }
     }
@@ -334,6 +343,7 @@ impl SettingsApp {
                         palette,
                         open || captured.is_some(),
                         &output.name,
+                        theme::HEADER_TWO_LINES,
                         |ui| {
                             ui.vertical(|ui| {
                                 let name = RichText::new(&output.name);
@@ -441,6 +451,7 @@ impl SettingsApp {
                     palette,
                     open,
                     t.add_output,
+                    theme::HEADER_ONE_LINE,
                     |ui| {
                         ui.label(RichText::new(format!("+  {}", t.add_output)).color(palette.accent));
                     },
@@ -489,21 +500,16 @@ impl SettingsApp {
         let mut toggled = false;
         ui.add_enabled_ui(self.capture.is_none(), |ui| {
             theme::fold_card(ui, palette, self.reveal && open, |ui| {
-                let summary = (t.wheel_summary)(i32::from(*step), osd.style.label(lang), osd.position.label(lang));
                 (toggled, ()) = theme::fold_header(
                     ui,
                     palette,
                     open,
                     &format!("Win {}", t.wheel_heading),
+                    theme::HEADER_ONE_LINE,
                     |ui| {
-                        ui.vertical(|ui| {
-                            ui.horizontal(|ui| {
-                                ui.spacing_mut().item_spacing.x = 4.0;
-                                theme::keycap(ui, palette, "Win");
-                                ui.label(t.wheel_heading);
-                            });
-                            ui.label(theme::help(palette, &summary));
-                        });
+                        ui.spacing_mut().item_spacing.x = 4.0;
+                        theme::keycap(ui, palette, "Win");
+                        ui.label(t.wheel_heading);
                     },
                     |ui| {
                         if open && ui.add_enabled(main_running, egui::Button::new(t.try_display)).clicked() {
@@ -547,18 +553,14 @@ impl SettingsApp {
         let mut startup_changed = false;
         ui.add_enabled_ui(self.capture.is_none(), |ui| {
             theme::fold_card(ui, palette, self.reveal && open, |ui| {
-                let language_name = language.map_or(t.windows_language_summary, Lang::native_name);
-                let summary = (t.general_summary)(language_name, startup);
                 (toggled, ()) = theme::fold_header(
                     ui,
                     palette,
                     open,
                     t.general_heading,
+                    theme::HEADER_ONE_LINE,
                     |ui| {
-                        ui.vertical(|ui| {
-                            ui.label(t.general_heading);
-                            ui.label(theme::help(palette, &summary));
-                        });
+                        ui.label(t.general_heading);
                     },
                     |_| {},
                 );
@@ -593,10 +595,63 @@ impl SettingsApp {
             self.toggle_fold(Fold::General);
         }
     }
+
+    fn about_section(&mut self, ui: &mut egui::Ui) {
+        let t = self.texts();
+        let palette = self.themes.palette(ui);
+        let open = self.open == Some(Fold::About);
+        let mut toggled = false;
+        ui.add_enabled_ui(self.capture.is_none(), |ui| {
+            theme::fold_card(ui, palette, self.reveal && open, |ui| {
+                (toggled, ()) = theme::fold_header(
+                    ui,
+                    palette,
+                    open,
+                    t.about_heading,
+                    theme::HEADER_ONE_LINE,
+                    |ui| {
+                        ui.label(t.about_heading);
+                    },
+                    |_| {},
+                );
+                if !open {
+                    return;
+                }
+                let repository = env!("CARGO_PKG_REPOSITORY");
+                theme::fold_row(ui, palette, t.version, None, |ui| {
+                    ui.label(env!("CARGO_PKG_VERSION"));
+                });
+                theme::fold_row(ui, palette, t.source_code, None, |ui| {
+                    ui.hyperlink_to("GitHub", repository);
+                });
+                theme::fold_row(ui, palette, t.report_problem, None, |ui| {
+                    ui.hyperlink_to(t.open_issue, format!("{repository}/issues/new/choose"));
+                });
+            });
+        });
+        if toggled {
+            self.toggle_fold(Fold::About);
+        }
+    }
 }
 
 impl eframe::App for SettingsApp {
+    /// Only the window's place is kept, not egui's state.
+    fn persist_egui_memory(&self) -> bool {
+        false
+    }
+
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        if !self.first_frame_logged {
+            self.first_frame_logged = true;
+            match since_process_start() {
+                Some(elapsed) => log::info!(
+                    "settings window ready {} ms after the process started",
+                    elapsed.as_millis()
+                ),
+                None => log::info!("settings window ready"),
+            }
+        }
         self.refresh();
         ui.ctx().request_repaint_after(REFRESH_EVERY);
 
@@ -624,7 +679,9 @@ impl eframe::App for SettingsApp {
                     self.add_section(ui);
                     ui.add_space(16.0);
                     self.wheel_section(ui);
+                    ui.add_space(16.0);
                     self.general_section(ui);
+                    self.about_section(ui);
                 });
             });
         });
@@ -690,6 +747,7 @@ enum Fold {
     Add,
     Wheel,
     General,
+    About,
 }
 
 enum OutputAction {
@@ -777,6 +835,18 @@ fn hotkey_messages(
     for warning in hotkey.warnings() {
         theme::fold_message(ui, palette, warning.message(lang), palette.warning);
     }
+}
+
+/// From the creation of this process, which counts what loading the
+/// executable costs.
+fn since_process_start() -> Option<Duration> {
+    let mut creation = FILETIME::default();
+    let (mut exit, mut kernel, mut user) = (FILETIME::default(), FILETIME::default(), FILETIME::default());
+    unsafe { GetProcessTimes(GetCurrentProcess(), &mut creation, &mut exit, &mut kernel, &mut user) }.ok()?;
+    let now = unsafe { GetSystemTimeAsFileTime() };
+    let ticks = |t: FILETIME| (u64::from(t.dwHighDateTime) << 32) | u64::from(t.dwLowDateTime);
+    // FILETIME counts 100 ns ticks.
+    Some(Duration::from_nanos(ticks(now).checked_sub(ticks(creation))? * 100))
 }
 
 fn file_time(path: &std::path::Path) -> Option<SystemTime> {

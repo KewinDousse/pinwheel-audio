@@ -53,6 +53,13 @@ Pinwheel has no installer. The background process writes `Pinwheel.lnk` in the u
 
 When the settings window does not open at startup (every start but the first), the display shows "Pinwheel started" with the app icon, so a start is never silent. The icon comes from `res/pinwheel.ico` (`crates/app/src/icon.rs`), and the renderer draws the smallest of its images that covers the needed size.
 
+## Settings window start
+
+Each opening starts a process, so the window's start time is what the user waits for. The log gives it ("settings window ready N ms after the process started").
+
+- wgpu is built with DirectX 12 only (`crates/app/Cargo.toml`): with its default backends, it tries Vulkan and OpenGL first at each start. OpenGL alone (eframe's `glow`) is not an option, as Windows can lack OpenGL 3.3 (remote sessions, basic display driver, the CI runner).
+- eframe keeps the window's position and size in `%LOCALAPPDATA%\Pinwheel\window.ron`, and puts the window back on a screen when that one is gone. The file is local, as screens differ from one machine to the next.
+
 ## Settings window look
 
 `crates/app/src/settings_theme.rs` follows the Windows 11 Settings app: Segoe UI Variable (Segoe UI before Windows 11) read from the Windows fonts, controls on the right, on/off switches, the shortcut's keys drawn as keycaps, and the accent colour of Windows (`AccentLight2` in the dark theme, `AccentDark1` in the light one). Both themes are set, and egui follows the one of Windows.
@@ -61,8 +68,8 @@ When the settings window does not open at startup (every start but the first), t
 
 The window shows little at once, so that it reads at a glance:
 
-- One card per output, then "Add an output", then a "Win + wheel" card (step, display style and position) and a "General" card (language, startup, logs).
-- Each card folds. Closed, it shows what matters day to day: an output's name, its state, whether it is the default output of Windows (`Audio::default_output_id`, read every second) and its keys; the other cards a one-line summary of their values. A click on the card opens it, and scrolls it into view; one card is open at a time.
+- Three groups, apart: the outputs then "Add an output"; a "Win + wheel" card (step, display style and position); a "General" card (language, startup, logs) then "About Pinwheel" (version, links to the source code and to a new issue).
+- Each card folds. Closed, an output's card shows what matters day to day: its name, its state, whether it is the default output of Windows (`Audio::default_output_id`, read every second) and its keys. The other cards show their title only: a summary of their values would repeat what opening them shows. A click on the card opens it, and scrolls it into view; one card is open at a time.
 - The rare actions (change or clear a shortcut, the calls option, remove the output) are inside the open card. Remove is at its bottom, away from the header, so that a double click opening the card cannot remove the output.
 - A shortcut's error or warning shows on its card, open or closed, and only when there is one.
 - During a capture, the box waiting for keys takes the place of the shortcut and the other cards are disabled.
