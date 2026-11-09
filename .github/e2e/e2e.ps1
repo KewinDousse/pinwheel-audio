@@ -248,17 +248,21 @@ WithWinHeld 'Win + Shift + wheel' { [U]::Wheel(120) } -Shift
 WithWinHeld 'Win + middle click' { [U]::MiddleClick() }
 
 # Win + Shift + scroll turned off: Shift has a path of its own, which
-# follows its switch. The settings are written as the settings window
-# would, then the background process told to reload them (WM_APP + 2).
+# follows its switch, and Win + wheel still works. The settings are written
+# as the settings window would, through a renamed temporary file since that
+# window reads the file meanwhile, then the background process is told to
+# reload them (WM_APP + 2).
 function SetFineStep($on) {
   $s = Saved
   $s | Add-Member -NotePropertyName fine_step -NotePropertyValue $on -Force
-  $s | ConvertTo-Json -Depth 10 | Set-Content $settingsFile
+  $s | ConvertTo-Json -Depth 10 | Set-Content "$settingsFile.e2e.tmp"
+  Move-Item -Force "$settingsFile.e2e.tmp" $settingsFile
   [U]::PostMessage([U]::FindWindow('Pinwheel.Main', [NullString]::Value), 0x8002, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
   Start-Sleep 2
 }
 SetFineStep $false
 WithWinHeld 'Win + Shift + wheel, turned off,' { [U]::Wheel(120) } -Shift -LeftToOthers
+WithWinHeld 'Win + wheel, Win + Shift + scroll off,' { [U]::Wheel(120) }
 SetFineStep $true
 
 # Closed while minimized, as from the taskbar, the window keeps its normal
