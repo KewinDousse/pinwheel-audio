@@ -20,6 +20,8 @@ What the automated tests do not cover. The log (`%LOCALAPPDATA%\Pinwheel\logs\pi
 - [ ] Release Win after turning the wheel, quickly and after holding Win for a few seconds: the Start menu does not open.
 - [ ] Win alone, without the wheel: the Start menu opens as usual.
 - [ ] Ctrl + Win + wheel: Pinwheel does nothing.
+- [ ] Win + Shift + wheel: 1% per notch. With "Win + Shift + scroll" off: Pinwheel does nothing, the page scrolls as without Pinwheel.
+- [ ] Win + middle click on a link in a browser: muted, the display shows it, no new tab opens, and Start stays closed. Again: unmuted. With "Win + middle click" off: the link opens in a new tab.
 - [ ] Volume at 33% (set in Windows), then one notch up: 40%.
 - [ ] Muted, then one notch up: unmuted.
 - [ ] Touchpad (two-finger scroll) and free-spinning wheel, when available.
@@ -31,8 +33,12 @@ What the automated tests do not cover. The log (`%LOCALAPPDATA%\Pinwheel\logs\pi
 ## Display
 
 - [ ] Each style and each position, with the "Try the display" button.
-- [ ] In the settings, drag the "Step per notch" slider ("Win + wheel" card) back and forth: the shortcuts keep working afterwards, and the log shows no burst of saves.
+- [ ] In the settings, drag the "Step per notch" slider ("Win + scroll" card) back and forth: the shortcuts keep working afterwards, and the log shows no burst of saves.
 - [ ] The display stays 1 s then fades out, and a new notch restarts the delay.
+- [ ] Duration at 0.5 s then at 5 s, opacity at 20%: the display follows, and fades out from its opacity.
+- [ ] Screen "Main screen", mouse on the other screen: the display shows on the main screen.
+- [ ] "Hide over full-screen apps and games" on: nothing shows over a browser video in full screen, a game, a PowerPoint slide show; it shows again once they are closed. Off: it shows over the video.
+- [ ] "Show the volume and the new output" off: neither Win + wheel nor a shortcut shows anything, and "Try the display" is disabled.
 - [ ] It does not take the focus: typing in the active window keeps working.
 - [ ] Two monitors with different scaling: it shows sharp and at the right size on the cursor's monitor.
 - [ ] Change the accent colour (Settings > Personalization > Colors): the next display's gauge takes it.
@@ -57,6 +63,14 @@ What the automated tests do not cover. The log (`%LOCALAPPDATA%\Pinwheel\logs\pi
 - [ ] Shortcut already taken by another app: the window says so within a second.
 - [ ] "Also for calls": the communications output changes in Windows Settings > Sound.
 - [ ] Restart the PC: every shortcut is still there.
+- [ ] Three outputs, one of them unplugged, and a "Next output" hotkey: each press goes to the next connected one, from the default output, round the list. Default output not in the list: the first connected one. None connected: the display says so.
+- [ ] "Next output" hotkey the same as an output's: the "Next output" card says so, and the output's hotkey works.
+
+## Update check
+
+- [ ] Run an exe older than the latest release: within seconds, the settings window shows "Pinwheel x.y.z is available", and the tray menu starts with it. Both open the release page.
+- [ ] Turn "Check for updates" off: the banner and the menu item go away, and the log shows no new check. On again: the log shows a check at once.
+- [ ] Without network: the log says "checking for updates failed", nothing else changes, and a new check runs 15 minutes later.
 
 ## Shortcut capture
 

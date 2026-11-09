@@ -24,6 +24,7 @@ public static class U {
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
   [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int cmd);
   [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint flags);
+  [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr h, uint msg, IntPtr w, IntPtr l);
   public static string ForegroundProcess() {
     uint pid; GetWindowThreadProcessId(GetForegroundWindow(), out pid);
     try { return System.Diagnostics.Process.GetProcessById((int)pid).ProcessName; } catch { return "?"; }
@@ -38,6 +39,10 @@ public static class U {
   }
   public static void Key(byte vk, bool up) { keybd_event(vk, 0, up ? 2u : 0u, UIntPtr.Zero); }
   public static void Wheel(int delta) { mouse_event(0x800, 0, 0, delta, UIntPtr.Zero); }
+  public static void MiddleClick() {
+    mouse_event(0x20,0,0,0,UIntPtr.Zero); System.Threading.Thread.Sleep(60);
+    mouse_event(0x40,0,0,0,UIntPtr.Zero);
+  }
 }
 "@
 
@@ -143,10 +148,12 @@ Check 'settings window opens' ([U]::FindWindow([NullString]::Value, $title) -ne 
 Shot 'closed'
 # What each card shows only when open. The runner has no audio device.
 $cards = [ordered]@{
-  '+  Add an output'           = 'No output connected.'
-  '+ wheel changes the volume' = 'Step per notch'
-  'General'                    = 'Open folder'
-  'About Pinwheel'             = 'Report a problem'
+  '+  Add an output'            = 'No output connected.'
+  'Next output'                 = 'Switches to the next connected output of the list.'
+  '+ scroll changes the volume' = 'Win + middle click: mute'
+  'On-screen display'           = 'Hide over full-screen apps and games'
+  'General'                     = 'Open folder'
+  'About Pinwheel'              = 'Report a problem'
 }
 $previous = $null
 foreach ($card in $cards.Keys) {
@@ -184,6 +191,20 @@ Press 0x11, 0x12, 0x31
 Start-Sleep 1
 Check 'saved shortcut fires' (LogHas 'shortcut pressed for "Test output"')
 
+# The "next output" shortcut, Ctrl+Alt+2, set from its card.
+ClickOn 'Next output' | Out-Null
+ClickOn 'Set' | Out-Null
+Press 0x11, 0x12, 0x32
+Start-Sleep 2
+$hotkey = (Saved).next_output_hotkey
+Check 'next output Ctrl+Alt+2 saved' ($hotkey -and $hotkey.ctrl -and $hotkey.alt -and $hotkey.key -eq 0x32) ($hotkey | ConvertTo-Json -Compress)
+Shot 'next-output'
+ClickOn 'Next output' | Out-Null
+ClickAway 'before the next output shortcut'
+Press 0x11, 0x12, 0x32
+Start-Sleep 1
+Check 'next output shortcut fires' (LogHas 'next output shortcut pressed')
+
 # Win alone opens Start, so that Start staying closed below means something.
 $startMenu = 'StartMenuExperienceHost|SearchHost|SearchApp'
 ClickAway 'before Win alone'
@@ -194,17 +215,55 @@ Check 'Win alone opens Start' ($foreground -match $startMenu) $foreground
 Press 0x1B
 Start-Sleep 1
 
-# Win held long enough to repeat, as a physical key does, with wheel notches.
-ClickAway 'before Win + wheel'
-[U]::Key(0x5B, $false)
-for ($i = 0; $i -lt 10; $i++) { Start-Sleep -Milliseconds 33; [U]::Key(0x5B, $false) }
-[U]::Wheel(120); Start-Sleep -Milliseconds 100; [U]::Wheel(120)
-for ($i = 0; $i -lt 15; $i++) { Start-Sleep -Milliseconds 33; [U]::Key(0x5B, $false) }
-[U]::Key(0x5B, $true)
-Start-Sleep 2
-$foreground = [U]::ForegroundProcess()
-Check 'Start stays closed after Win + wheel' ($foreground -notmatch $startMenu) $foreground
-if ($foreground -match $startMenu) { Press 0x1B }
+# Each volume change or mute the hook passes on fails on the runner, which
+# has no audio device: the failures in the log show that it took the event.
+function AudioCalls { if (Test-Path $log) { @(Select-String -Path $log -SimpleMatch 'audio call failed').Count } else { 0 } }
+
+# Win held long enough to repeat, as a physical key does, around `$use`.
+# Windows does not open Start when Shift is held with Win, so Start is
+# only checked without it.
+function WithWinHeld($name, [scriptblock]$use, [switch]$Shift, [switch]$Ignored) {
+  ClickAway "before $name"
+  $calls = AudioCalls
+  if ($Shift) { [U]::Key(0x10, $false) }
+  [U]::Key(0x5B, $false)
+  for ($i = 0; $i -lt 10; $i++) { Start-Sleep -Milliseconds 33; [U]::Key(0x5B, $false) }
+  & $use
+  for ($i = 0; $i -lt 15; $i++) { Start-Sleep -Milliseconds 33; [U]::Key(0x5B, $false) }
+  [U]::Key(0x5B, $true)
+  if ($Shift) { [U]::Key(0x10, $true) }
+  Start-Sleep 2
+  if ($Ignored) {
+    Check "$name ignored by Pinwheel" ((AudioCalls) -eq $calls)
+  } else {
+    Check "$name reaches Pinwheel" ((AudioCalls) -gt $calls)
+  }
+  if ($Shift) { return }
+  $foreground = [U]::ForegroundProcess()
+  Check "Start stays closed after $name" ($foreground -notmatch $startMenu) $foreground
+  if ($foreground -match $startMenu) { Press 0x1B }
+}
+WithWinHeld 'Win + wheel' { [U]::Wheel(120); Start-Sleep -Milliseconds 100; [U]::Wheel(120) }
+WithWinHeld 'Win + Shift + wheel' { [U]::Wheel(120) } -Shift
+WithWinHeld 'Win + middle click' { [U]::MiddleClick() }
+
+# Win + Shift + scroll turned off: Shift has a path of its own, which
+# follows its switch, and Win + wheel still works. The settings are written
+# as the settings window would, through a renamed temporary file since that
+# window reads the file meanwhile, then the background process is told to
+# reload them (WM_APP + 2).
+function SetFineStep($on) {
+  $s = Saved
+  $s | Add-Member -NotePropertyName fine_step -NotePropertyValue $on -Force
+  $s | ConvertTo-Json -Depth 10 | Set-Content "$settingsFile.e2e.tmp"
+  Move-Item -Force "$settingsFile.e2e.tmp" $settingsFile
+  [U]::PostMessage([U]::FindWindow('Pinwheel.Main', [NullString]::Value), 0x8002, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
+  Start-Sleep 2
+}
+SetFineStep $false
+WithWinHeld 'Win + Shift + wheel, turned off,' { [U]::Wheel(120) } -Shift -Ignored
+WithWinHeld 'Win + wheel, Win + Shift + scroll off,' { [U]::Wheel(120) }
+SetFineStep $true
 
 # Closed while minimized, as from the taskbar, the window keeps its normal
 # place for the next opening, here in the dark theme.
@@ -230,7 +289,8 @@ $same = [Math]::Abs($after.L - $before.L) -le 2 -and [Math]::Abs($after.T - $bef
   [Math]::Abs(($after.R - $after.L) - ($before.R - $before.L)) -le 2 -and [Math]::Abs(($after.B - $after.T) - ($before.B - $before.T)) -le 2
 Check 'the window opens where it was closed' $same $moved
 if (ClickOn 'Test output') { Shot 'dark-output-open' }
-if (ClickOn '+ wheel changes the volume') { Shot 'dark-wheel-open' }
+if (ClickOn '+ scroll changes the volume') { Shot 'dark-wheel-open' }
+if (ClickOn 'On-screen display') { Shot 'dark-display-open' }
 
 Check 'opening time logged' (LogHas 'settings window shown')
 if (Test-Path $log) {

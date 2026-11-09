@@ -7,6 +7,7 @@
 
 use crate::ipc::{WM_TRAY, wide};
 use pinwheel_core::i18n::Lang;
+use pinwheel_core::update::Release;
 use windows::Win32::Foundation::{HWND, POINT};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Shell::{
@@ -27,6 +28,8 @@ const ICON_RESOURCE: u16 = 1;
 pub enum MenuCommand {
     Settings = 1,
     Quit = 2,
+    /// Opens the page of the newer release.
+    Update = 3,
 }
 
 pub struct Tray {
@@ -104,11 +107,16 @@ impl Drop for Tray {
 /// Shows the menu at the cursor and returns the chosen command. Does not
 /// touch the app state: the menu runs a modal loop that dispatches other
 /// messages meanwhile.
-pub fn show_menu(hwnd: HWND, lang: Lang) -> Option<MenuCommand> {
+pub fn show_menu(hwnd: HWND, lang: Lang, update: Option<&Release>) -> Option<MenuCommand> {
     let texts = lang.texts();
     let (settings, quit) = (wide(texts.tray_settings), wide(texts.tray_quit));
+    let update = update.map(|release| wide(&(texts.update_available)(&release.version)));
     unsafe {
         let menu = CreatePopupMenu().ok()?;
+        if let Some(update) = &update {
+            let _ = AppendMenuW(menu, MF_STRING, MenuCommand::Update as usize, PCWSTR(update.as_ptr()));
+            let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
+        }
         let _ = AppendMenuW(
             menu,
             MF_STRING,
@@ -138,6 +146,7 @@ pub fn show_menu(hwnd: HWND, lang: Lang) -> Option<MenuCommand> {
         match chosen.0 {
             1 => Some(MenuCommand::Settings),
             2 => Some(MenuCommand::Quit),
+            3 => Some(MenuCommand::Update),
             _ => None,
         }
     }

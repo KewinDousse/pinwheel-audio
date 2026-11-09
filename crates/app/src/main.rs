@@ -39,6 +39,8 @@ mod settings_theme;
 #[cfg(windows)]
 mod settings_ui;
 #[cfg(windows)]
+mod shell;
+#[cfg(windows)]
 mod start_menu;
 #[cfg(windows)]
 mod startup;
@@ -46,6 +48,8 @@ mod startup;
 mod thread;
 #[cfg(windows)]
 mod tray;
+#[cfg(windows)]
+mod update;
 #[cfg(windows)]
 mod window_place;
 

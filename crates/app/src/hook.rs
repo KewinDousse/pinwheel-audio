@@ -1,17 +1,18 @@
-//! Win + mouse wheel, through low-level hooks (see
+//! Win + mouse wheel and Win + middle click, through low-level hooks (see
 //! `docs/adr/0003-win-wheel-hook.md`).
 //!
 //! The hooks run on a thread of their own: Windows silently removes a
 //! low-level hook whose callback takes more than about a second, and the
 //! main thread can be slow while it talks to a Bluetooth device. The mouse
-//! callback only turns wheel events into notches for the main window; the
-//! keyboard callback only keeps Start closed when Win is released.
+//! callback only turns wheel events into notches, and middle clicks into a
+//! mute, for the main window; the keyboard callback only keeps Start closed
+//! when Win is released.
 //!
 //! An application cannot know that its hook was removed, so the hooks are
 //! reinstalled on a fixed interval, after resume from sleep and after the
 //! session is unlocked.
 
-use crate::ipc::WM_VOLUME_NOTCHES;
+use crate::ipc::{WM_TOGGLE_MUTE, WM_VOLUME_NOTCHES};
 use crate::thread::{MessageThread, run_message_loop};
 use pinwheel_core::volume::WheelAccumulator;
 use std::cell::{Cell, RefCell};
@@ -23,8 +24,8 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     CallNextHookEx, HC_ACTION, HHOOK, KBDLLHOOKSTRUCT, MSLLHOOKSTRUCT, PostMessageW, SetTimer, SetWindowsHookExW,
-    UnhookWindowsHookEx, WH_KEYBOARD_LL, WH_MOUSE_LL, WINDOWS_HOOK_ID, WM_APP, WM_KEYDOWN, WM_KEYUP, WM_MOUSEWHEEL,
-    WM_SYSKEYDOWN, WM_SYSKEYUP, WM_TIMER,
+    UnhookWindowsHookEx, WH_KEYBOARD_LL, WH_MOUSE_LL, WINDOWS_HOOK_ID, WM_APP, WM_KEYDOWN, WM_KEYUP, WM_MBUTTONDOWN,
+    WM_MBUTTONUP, WM_MOUSEWHEEL, WM_SYSKEYDOWN, WM_SYSKEYUP, WM_TIMER,
 };
 
 const REINSTALL_INTERVAL_MS: u32 = 5 * 60 * 1000;
@@ -38,18 +39,26 @@ pub const VK_MASK: VIRTUAL_KEY = VIRTUAL_KEY(0xE8);
 const INJECTED_TAG: usize = 0x5049_4E57;
 
 static MAIN_WINDOW: AtomicIsize = AtomicIsize::new(0);
-/// Notches not yet applied. The main window reads them all at once, so a
-/// fast spin never queues up more displays than it can draw.
+/// Notches not yet applied, of Win + wheel and of Win + Shift + wheel. The
+/// main window reads them all at once, so a fast spin never queues up more
+/// displays than it can draw.
 static PENDING_NOTCHES: AtomicI32 = AtomicI32::new(0);
+static PENDING_FINE_NOTCHES: AtomicI32 = AtomicI32::new(0);
 /// A `WM_VOLUME_NOTCHES` is on its way and has not been read yet.
 static NOTIFIED: AtomicBool = AtomicBool::new(false);
+/// Set by the main thread from the settings. Off, the combination is left
+/// to other apps.
+static FINE_STEP: AtomicBool = AtomicBool::new(false);
+static MIDDLE_CLICK_MUTE: AtomicBool = AtomicBool::new(false);
 
 thread_local! {
     static MOUSE_HOOK: Cell<Option<HHOOK>> = const { Cell::new(None) };
     static KEYBOARD_HOOK: Cell<Option<HHOOK>> = const { Cell::new(None) };
     static WHEEL: RefCell<WheelAccumulator> = RefCell::new(WheelAccumulator::default());
-    /// The wheel was turned since Win went down.
+    /// The wheel was turned, or the middle button pressed, since Win went down.
     static WIN_USED: Cell<bool> = const { Cell::new(false) };
+    /// The middle button press was swallowed, so its release must be too.
+    static MIDDLE_SWALLOWED: Cell<bool> = const { Cell::new(false) };
 }
 
 /// Handle to the hook thread. Dropping it stops the thread.
@@ -70,12 +79,29 @@ impl HookThread {
     }
 }
 
-/// The notches received since the last call, signed. Called by the main
-/// window on [`WM_VOLUME_NOTCHES`].
-pub fn take_notches() -> i32 {
+/// Which combinations the hooks take.
+pub fn configure(fine_step: bool, middle_click_mute: bool) {
+    FINE_STEP.store(fine_step, Ordering::SeqCst);
+    MIDDLE_CLICK_MUTE.store(middle_click_mute, Ordering::SeqCst);
+}
+
+/// Notches received since the last call, signed.
+#[derive(Debug, Clone, Copy)]
+pub struct Notches {
+    /// Win + wheel.
+    pub normal: i32,
+    /// Win + Shift + wheel.
+    pub fine: i32,
+}
+
+/// Called by the main window on [`WM_VOLUME_NOTCHES`].
+pub fn take_notches() -> Notches {
     // Cleared first: a notch arriving from here on posts a new message.
     NOTIFIED.store(false, Ordering::SeqCst);
-    PENDING_NOTCHES.swap(0, Ordering::SeqCst)
+    Notches {
+        normal: PENDING_NOTCHES.swap(0, Ordering::SeqCst),
+        fine: PENDING_FINE_NOTCHES.swap(0, Ordering::SeqCst),
+    }
 }
 
 fn run() {
@@ -118,9 +144,18 @@ fn is_down(key: VIRTUAL_KEY) -> bool {
     (unsafe { GetAsyncKeyState(i32::from(key.0)) } as u16 & 0x8000) != 0
 }
 
-/// Win alone: Ctrl, Alt or Shift with Win + wheel are left to other apps.
-fn win_only() -> bool {
-    (is_down(VK_LWIN) || is_down(VK_RWIN)) && !is_down(VK_CONTROL) && !is_down(VK_MENU) && !is_down(VK_SHIFT)
+#[derive(PartialEq, Eq)]
+enum Held {
+    Win,
+    WinShift,
+}
+
+/// Ctrl or Alt with Win are left to other apps.
+fn held() -> Option<Held> {
+    if !(is_down(VK_LWIN) || is_down(VK_RWIN)) || is_down(VK_CONTROL) || is_down(VK_MENU) {
+        return None;
+    }
+    Some(if is_down(VK_SHIFT) { Held::WinShift } else { Held::Win })
 }
 
 fn key_input(vk: VIRTUAL_KEY, scan: u16, flags: KEYBD_EVENT_FLAGS) -> INPUT {
@@ -171,21 +206,55 @@ unsafe extern "system" fn keyboard_proc(code: i32, wparam: WPARAM, lparam: LPARA
     unsafe { CallNextHookEx(None, code, wparam, lparam) }
 }
 
-unsafe extern "system" fn mouse_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
-    if code == HC_ACTION as i32 && wparam.0 as u32 == WM_MOUSEWHEEL && win_only() {
-        let info = unsafe { &*(lparam.0 as *const MSLLHOOKSTRUCT) };
-        let delta = i32::from((info.mouseData >> 16) as u16 as i16);
-        let notches = WHEEL.with_borrow_mut(|wheel| wheel.push(delta, info.time));
-        WIN_USED.set(true);
-        if notches != 0 {
-            PENDING_NOTCHES.fetch_add(notches, Ordering::SeqCst);
-            if !NOTIFIED.swap(true, Ordering::SeqCst) {
-                let main = HWND(MAIN_WINDOW.load(Ordering::SeqCst) as *mut _);
-                let _ = unsafe { PostMessageW(Some(main), WM_VOLUME_NOTCHES, WPARAM(0), LPARAM(0)) };
+fn post_main(msg: u32) {
+    let main = HWND(MAIN_WINDOW.load(Ordering::SeqCst) as *mut _);
+    let _ = unsafe { PostMessageW(Some(main), msg, WPARAM(0), LPARAM(0)) };
+}
+
+/// Returns `true` when the event is swallowed, so that the window under
+/// the cursor neither scrolls nor gets the click.
+fn on_mouse(msg: u32, info: &MSLLHOOKSTRUCT) -> bool {
+    match msg {
+        WM_MOUSEWHEEL => {
+            let pending = match held() {
+                Some(Held::Win) => &PENDING_NOTCHES,
+                Some(Held::WinShift) if FINE_STEP.load(Ordering::SeqCst) => &PENDING_FINE_NOTCHES,
+                _ => return false,
+            };
+            let delta = i32::from((info.mouseData >> 16) as u16 as i16);
+            let notches = WHEEL.with_borrow_mut(|wheel| wheel.push(delta, info.time));
+            WIN_USED.set(true);
+            if notches != 0 {
+                pending.fetch_add(notches, Ordering::SeqCst);
+                if !NOTIFIED.swap(true, Ordering::SeqCst) {
+                    post_main(WM_VOLUME_NOTCHES);
+                }
             }
+            true
         }
-        // Swallowed, so the window under the cursor does not scroll.
-        return LRESULT(1);
+        WM_MBUTTONDOWN if MIDDLE_CLICK_MUTE.load(Ordering::SeqCst) && held() == Some(Held::Win) => {
+            WIN_USED.set(true);
+            MIDDLE_SWALLOWED.set(true);
+            post_main(WM_TOGGLE_MUTE);
+            true
+        }
+        // A release the hook missed must not swallow the next one.
+        WM_MBUTTONDOWN => {
+            MIDDLE_SWALLOWED.set(false);
+            false
+        }
+        // Even when Win is already up.
+        WM_MBUTTONUP => MIDDLE_SWALLOWED.take(),
+        _ => false,
+    }
+}
+
+unsafe extern "system" fn mouse_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+    if code == HC_ACTION as i32 {
+        let info = unsafe { &*(lparam.0 as *const MSLLHOOKSTRUCT) };
+        if on_mouse(wparam.0 as u32, info) {
+            return LRESULT(1);
+        }
     }
     unsafe { CallNextHookEx(None, code, wparam, lparam) }
 }

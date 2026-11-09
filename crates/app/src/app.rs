@@ -9,20 +9,21 @@
 //! messages re-entrantly (the tray menu runs its own modal loop).
 
 use crate::audio::Audio;
-use crate::hook::{self, HookThread};
-use crate::hotkeys::Hotkeys;
+use crate::hook::{self, HookThread, Notches};
+use crate::hotkeys::{Hotkeys, Slot};
 use crate::ipc::{
-    self, InstanceLock, WM_CAPTURE_BEGIN, WM_CAPTURE_END, WM_OPEN_SETTINGS, WM_PREVIEW_OSD, WM_RELOAD, WM_TRAY,
-    WM_VOLUME_NOTCHES,
+    self, InstanceLock, WM_CAPTURE_BEGIN, WM_CAPTURE_END, WM_OPEN_SETTINGS, WM_PREVIEW_OSD, WM_RELOAD, WM_TOGGLE_MUTE,
+    WM_TRAY, WM_UPDATE_CHECKED, WM_VOLUME_NOTCHES,
 };
 use crate::osd::Osd;
 use crate::tray::{self, MenuCommand, Tray};
-use crate::{icon, language, logging, paths, start_menu, startup};
-use pinwheel_core::devices::{Resolution, resolve};
+use crate::{icon, language, logging, paths, shell, start_menu, startup, update};
+use pinwheel_core::devices::{DeviceInfo, Resolution, next_output, resolve};
 use pinwheel_core::i18n::{Lang, Texts};
 use pinwheel_core::osd::Content;
-use pinwheel_core::settings::{self, LoadIssue, Settings};
-use pinwheel_core::status;
+use pinwheel_core::settings::{self, FINE_STEP, LoadIssue, Settings};
+use pinwheel_core::status::{self, Status};
+use pinwheel_core::update::Release;
 use std::cell::RefCell;
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::System::Com::{COINIT_APARTMENTTHREADED, CoInitializeEx};
@@ -40,7 +41,12 @@ use windows::core::w;
 const TIMER_HOTKEY_RETRY: usize = 20;
 const TIMER_TRAY_RETRY: usize = 21;
 const TIMER_CAPTURE_END: usize = 22;
+const TIMER_UPDATE_CHECK: usize = 23;
+const TIMER_UPDATE_RETRY: usize = 24;
 const HOTKEY_RETRY_MS: u32 = 30_000;
+const UPDATE_CHECK_MS: u32 = 24 * 60 * 60 * 1000;
+/// At sign-in, the network is often not ready yet.
+const UPDATE_RETRY_MS: u32 = 15 * 60 * 1000;
 const TRAY_RETRY_MS: u32 = 2_000;
 /// Longer than a capture lasts: the shortcuts come back even if the settings
 /// window closes without saying so.
@@ -62,6 +68,8 @@ struct App {
     tray: Tray,
     /// `None` when the thread could not start: shortcuts still work.
     hook: Option<HookThread>,
+    /// What the status file holds.
+    status: Status,
 }
 
 /// Runs the background process until "Quit".
@@ -113,9 +121,14 @@ pub fn run() {
         hook: HookThread::start(hwnd)
             .inspect_err(|e| log::error!("starting the wheel hook failed: {e}"))
             .ok(),
+        status: Status::default(),
     };
     app.report_load_issue(issue);
-    app.register_hotkeys();
+    app.apply_settings();
+    if app.settings.check_updates {
+        update::start(hwnd);
+    }
+    unsafe { SetTimer(Some(hwnd), TIMER_UPDATE_CHECK, UPDATE_CHECK_MS, None) };
     if !app.tray.show() {
         log::warn!("the notification area is not ready, retrying");
         unsafe { SetTimer(Some(hwnd), TIMER_TRAY_RETRY, TRAY_RETRY_MS, None) };
@@ -221,22 +234,55 @@ impl App {
         }
     }
 
-    fn on_volume_notches(&mut self, notches: i32) {
-        let step = self.settings.volume_step;
-        if let Some(volume) = self.with_audio(|audio| audio.change_volume(notches, step)) {
+    fn on_volume_notches(&mut self, notches: Notches) {
+        let mut shown = None;
+        for (count, step) in [(notches.normal, self.settings.volume_step), (notches.fine, FINE_STEP)] {
+            if count != 0 {
+                shown = self.with_audio(|audio| audio.change_volume(count, step)).or(shown);
+            }
+        }
+        if let Some(volume) = shown {
             self.show(&Content::Volume(volume));
         }
     }
 
-    fn on_hotkey(&mut self, index: usize) {
-        let Some(binding) = self.settings.outputs.get(index).cloned() else {
-            return;
-        };
-        log::info!("shortcut pressed for \"{}\"", binding.name);
+    fn on_toggle_mute(&mut self) {
+        if let Some(volume) = self.with_audio(Audio::toggle_mute) {
+            log::info!("muted: {}", volume.muted);
+            self.show(&Content::Volume(volume));
+        }
+    }
+
+    fn on_hotkey(&mut self, slot: Slot) {
+        match slot {
+            Slot::Output(index) => match self.settings.outputs.get(index) {
+                Some(binding) => log::info!("shortcut pressed for \"{}\"", binding.name),
+                None => return,
+            },
+            Slot::NextOutput => log::info!("next output shortcut pressed"),
+        }
         let Some(devices) = self.with_audio(Audio::outputs) else {
             return;
         };
-        let target = match resolve(&binding.id, &binding.name, &devices) {
+        let index = match slot {
+            Slot::Output(index) => index,
+            Slot::NextOutput => {
+                let default_id = self.with_audio(Audio::default_output_id);
+                match next_output(&self.settings.outputs, &devices, default_id.as_deref()) {
+                    Some(index) => index,
+                    None => {
+                        self.show(&Content::Notice(self.texts().no_listed_output_connected.into()));
+                        return;
+                    }
+                }
+            }
+        };
+        self.switch_to(index, &devices);
+    }
+
+    fn switch_to(&mut self, index: usize, devices: &[DeviceInfo]) {
+        let binding = self.settings.outputs[index].clone();
+        let target = match resolve(&binding.id, &binding.name, devices) {
             Resolution::Ready(device) => device.clone(),
             Resolution::Moved(device) => {
                 log::info!(
@@ -284,10 +330,56 @@ impl App {
             // A failed read keeps the shortcuts that are registered.
             (_, Some(LoadIssue::Io(e))) => log::error!("reading the settings failed, keeping the current ones: {e}"),
             (settings, issue) => {
+                let checked_before = self.settings.check_updates;
                 self.settings = settings;
                 self.report_load_issue(issue);
-                self.register_hotkeys();
+                self.apply_settings();
+                match (checked_before, self.settings.check_updates) {
+                    (false, true) => update::start(self.hwnd),
+                    (true, false) => self.set_update(None),
+                    _ => {}
+                }
             }
+        }
+    }
+
+    fn apply_settings(&mut self) {
+        hook::configure(self.settings.fine_step, self.settings.middle_click_mute);
+        self.register_hotkeys();
+    }
+
+    fn on_update_checked(&mut self) {
+        let result = update::take_result();
+        match &result {
+            Some(Err(update::Failure::Offline(_))) => {
+                unsafe { SetTimer(Some(self.hwnd), TIMER_UPDATE_RETRY, UPDATE_RETRY_MS, None) };
+            }
+            Some(_) => {
+                let _ = unsafe { KillTimer(Some(self.hwnd), TIMER_UPDATE_RETRY) };
+            }
+            None => {}
+        }
+        match result {
+            // Turned off while the check ran.
+            Some(_) if !self.settings.check_updates => {}
+            Some(Ok(Some(release))) => {
+                log::info!("Pinwheel {} is available", release.version);
+                self.set_update(Some(release));
+            }
+            Some(Ok(None)) => {
+                log::info!("Pinwheel is up to date");
+                self.set_update(None);
+            }
+            // What was found before still holds.
+            Some(Err(e)) => log::warn!("checking for updates failed: {e}"),
+            None => {}
+        }
+    }
+
+    fn set_update(&mut self, release: Option<Release>) {
+        if self.status.update != release {
+            self.status.update = release;
+            self.write_status();
         }
     }
 
@@ -313,15 +405,21 @@ impl App {
     }
 
     fn register_hotkeys(&mut self) {
-        let status = self.hotkeys.register_all(self.hwnd, &self.settings.outputs);
-        self.write_status(&status);
+        let refusals = self.hotkeys.register_all(self.hwnd, &self.settings);
+        self.set_refusals(refusals);
         if self.hotkeys.has_refused() {
             unsafe { SetTimer(Some(self.hwnd), TIMER_HOTKEY_RETRY, HOTKEY_RETRY_MS, None) };
         }
     }
 
-    fn write_status(&self, status: &status::Status) {
-        if let Err(e) = status::save(&paths::status_file(), status) {
+    fn set_refusals(&mut self, refusals: Status) {
+        self.status.hotkey_errors = refusals.hotkey_errors;
+        self.status.next_output_error = refusals.next_output_error;
+        self.write_status();
+    }
+
+    fn write_status(&self) {
+        if let Err(e) = status::save(&paths::status_file(), &self.status) {
             log::warn!("writing the status failed: {e}");
         }
     }
@@ -332,14 +430,21 @@ impl App {
         }
         match id {
             TIMER_HOTKEY_RETRY => {
-                if let Some(status) = self.hotkeys.retry_refused(self.hwnd, &self.settings.outputs) {
-                    self.write_status(&status);
+                if let Some(refusals) = self.hotkeys.retry_refused(self.hwnd, &self.settings) {
+                    self.set_refusals(refusals);
                 }
                 if !self.hotkeys.has_refused() {
                     let _ = unsafe { KillTimer(Some(self.hwnd), TIMER_HOTKEY_RETRY) };
                 }
             }
             TIMER_CAPTURE_END => self.resume_hotkeys(),
+            TIMER_UPDATE_CHECK if self.settings.check_updates => update::start(self.hwnd),
+            TIMER_UPDATE_RETRY => {
+                let _ = unsafe { KillTimer(Some(self.hwnd), TIMER_UPDATE_RETRY) };
+                if self.settings.check_updates {
+                    update::start(self.hwnd);
+                }
+            }
             TIMER_TRAY_RETRY if self.tray.show() => {
                 let _ = unsafe { KillTimer(Some(self.hwnd), TIMER_TRAY_RETRY) };
             }
@@ -374,14 +479,14 @@ fn with_app(action: impl FnOnce(&mut App)) {
     });
 }
 
-/// The tray menu reads the language without holding the app borrow
-/// through its modal loop.
-fn current_lang() -> Lang {
+/// The tray menu reads the language and the update without holding the
+/// app borrow through its modal loop.
+fn menu_state() -> (Lang, Option<Release>) {
     APP.with(|cell| {
         cell.try_borrow()
             .ok()
-            .and_then(|app| app.as_ref().map(App::lang))
-            .unwrap_or(Lang::English)
+            .and_then(|app| app.as_ref().map(|app| (app.lang(), app.status.update.clone())))
+            .unwrap_or((Lang::English, None))
     })
 }
 
@@ -390,26 +495,36 @@ unsafe extern "system" fn window_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lpar
         WM_VOLUME_NOTCHES => {
             // Read even when the app is busy, or the hook would wait for this message forever.
             let notches = hook::take_notches();
-            if notches != 0 {
+            if notches.normal != 0 || notches.fine != 0 {
                 with_app(|app| app.on_volume_notches(notches));
             }
         }
+        WM_TOGGLE_MUTE => with_app(App::on_toggle_mute),
         WM_HOTKEY => {
-            if let Some(index) = Hotkeys::output_index(wparam.0) {
-                with_app(|app| app.on_hotkey(index));
+            if let Some(slot) = Slot::from_id(wparam.0) {
+                with_app(|app| app.on_hotkey(slot));
             }
         }
         WM_TRAY => match lparam.0 as u32 {
             WM_LBUTTONUP => open_settings(),
-            WM_RBUTTONUP => match tray::show_menu(hwnd, current_lang()) {
-                Some(MenuCommand::Settings) => open_settings(),
-                Some(MenuCommand::Quit) => {
-                    let _ = unsafe { DestroyWindow(hwnd) };
+            WM_RBUTTONUP => {
+                let (lang, update) = menu_state();
+                match tray::show_menu(hwnd, lang, update.as_ref()) {
+                    Some(MenuCommand::Settings) => open_settings(),
+                    Some(MenuCommand::Update) => {
+                        if let Some(release) = update {
+                            shell::open(&release.url);
+                        }
+                    }
+                    Some(MenuCommand::Quit) => {
+                        let _ = unsafe { DestroyWindow(hwnd) };
+                    }
+                    None => {}
                 }
-                None => {}
-            },
+            }
             _ => {}
         },
+        WM_UPDATE_CHECKED => with_app(App::on_update_checked),
         WM_OPEN_SETTINGS => open_settings(),
         WM_RELOAD => with_app(App::reload),
         WM_PREVIEW_OSD => with_app(App::preview),

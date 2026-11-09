@@ -23,11 +23,22 @@ pub struct Settings {
     pub language: Option<Lang>,
     /// Volume change per wheel notch, in percent.
     pub volume_step: u8,
+    /// Win + Shift + wheel changes the volume by [`FINE_STEP`].
+    pub fine_step: bool,
+    /// Win + middle click mutes or unmutes the default output.
+    pub middle_click_mute: bool,
     pub osd: OsdSettings,
     /// Outputs the user picked, in display order. Unplugged ones stay here
     /// with their shortcut.
     pub outputs: Vec<OutputBinding>,
+    /// Makes the next connected output of the list the default one.
+    pub next_output_hotkey: Option<Hotkey>,
+    /// Asks GitHub for the latest release, at startup then once a day.
+    pub check_updates: bool,
 }
+
+/// Volume change per notch of Win + Shift + wheel, in percent.
+pub const FINE_STEP: u8 = 1;
 
 impl Default for Settings {
     fn default() -> Self {
@@ -35,8 +46,12 @@ impl Default for Settings {
             version: VERSION,
             language: None,
             volume_step: DEFAULT_VOLUME_STEP,
+            fine_step: true,
+            middle_click_mute: true,
             osd: OsdSettings::default(),
             outputs: Vec::new(),
+            next_output_hotkey: None,
+            check_updates: true,
         }
     }
 }
@@ -56,11 +71,48 @@ pub struct OutputBinding {
     pub communications: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct OsdSettings {
+    /// Off, nothing shows, not even notices.
+    pub enabled: bool,
     pub style: OsdStyle,
     pub position: OsdPosition,
+    pub screen: OsdScreen,
+    /// Time shown before the fade, in milliseconds, within [`OSD_DURATION_MS`].
+    pub duration_ms: u32,
+    /// Within [`OSD_OPACITY`], in percent.
+    pub opacity: u8,
+    /// Nothing shows while a full-screen app, a game or a presentation runs.
+    pub hide_in_fullscreen: bool,
+}
+
+pub const OSD_DURATION_MS: std::ops::RangeInclusive<u32> = 500..=5_000;
+pub const OSD_OPACITY: std::ops::RangeInclusive<u8> = 20..=100;
+
+impl Default for OsdSettings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            style: OsdStyle::default(),
+            position: OsdPosition::default(),
+            screen: OsdScreen::default(),
+            duration_ms: 1_000,
+            opacity: 100,
+            hide_in_fullscreen: false,
+        }
+    }
+}
+
+impl OsdSettings {
+    /// The duration and opacity within their ranges, for a hand-edited file.
+    pub fn clamped(self) -> Self {
+        Self {
+            duration_ms: self.duration_ms.clamp(*OSD_DURATION_MS.start(), *OSD_DURATION_MS.end()),
+            opacity: self.opacity.clamp(*OSD_OPACITY.start(), *OSD_OPACITY.end()),
+            ..self
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -110,10 +162,39 @@ impl OsdPosition {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OsdScreen {
+    /// The screen under the mouse pointer.
+    #[default]
+    Pointer,
+    /// The main screen, set in the Windows display settings.
+    Primary,
+}
+
+impl OsdScreen {
+    pub const ALL: [Self; 2] = [Self::Pointer, Self::Primary];
+
+    pub fn label(self, lang: Lang) -> &'static str {
+        let texts = lang.texts();
+        match self {
+            Self::Pointer => texts.screen_pointer,
+            Self::Primary => texts.screen_primary,
+        }
+    }
+}
+
 /// Two outputs sharing a shortcut: Windows would only register the first.
 pub fn duplicate_hotkey(outputs: &[OutputBinding], index: usize) -> Option<&OutputBinding> {
     let hotkey = outputs.get(index)?.hotkey?;
     outputs[..index].iter().find(|o| o.hotkey == Some(hotkey))
+}
+
+/// The output whose shortcut is also the "next output" one. The outputs
+/// are registered first, so that one wins.
+pub fn next_output_duplicate(settings: &Settings) -> Option<&OutputBinding> {
+    let hotkey = settings.next_output_hotkey?;
+    settings.outputs.iter().find(|o| o.hotkey == Some(hotkey))
 }
 
 /// Problem found while reading the file.
@@ -137,6 +218,7 @@ pub fn load(path: &Path) -> (Settings, Option<LoadIssue>) {
     match serde_json::from_str::<Settings>(&text) {
         Ok(mut settings) => {
             settings.version = VERSION;
+            settings.osd = settings.osd.clamped();
             (settings, None)
         }
         Err(error) => {
@@ -244,6 +326,29 @@ mod tests {
         assert_eq!(loaded.volume_step, DEFAULT_VOLUME_STEP);
         assert_eq!(loaded.outputs[0].hotkey, None);
         assert!(!loaded.outputs[0].communications);
+        assert!(loaded.fine_step && loaded.middle_click_mute && loaded.check_updates);
+    }
+
+    #[test]
+    fn an_older_display_section_keeps_the_display_on() {
+        let path = temp_dir("older-osd").join("settings.json");
+        std::fs::write(&path, r#"{"osd":{"style":"bar","position":"top"}}"#).unwrap();
+        let osd = load(&path).0.osd;
+        assert_eq!((osd.style, osd.position), (OsdStyle::Bar, OsdPosition::Top));
+        assert!(osd.enabled);
+        assert_eq!(osd.duration_ms, 1_000);
+        assert_eq!(osd.opacity, 100);
+    }
+
+    #[test]
+    fn clamps_a_hand_edited_display() {
+        let osd = OsdSettings {
+            duration_ms: 60_000,
+            opacity: 0,
+            ..OsdSettings::default()
+        }
+        .clamped();
+        assert_eq!((osd.duration_ms, osd.opacity), (5_000, 20));
     }
 
     #[test]
@@ -284,6 +389,17 @@ mod tests {
         assert_eq!(
             duplicate_hotkey(&settings.outputs, 1).map(|o| o.id.as_str()),
             Some("{0.0.0.00000000}.{abc}")
+        );
+    }
+
+    #[test]
+    fn detects_a_next_output_hotkey_taken_by_an_output() {
+        let mut settings = sample();
+        assert!(next_output_duplicate(&settings).is_none());
+        settings.next_output_hotkey = settings.outputs[0].hotkey;
+        assert_eq!(
+            next_output_duplicate(&settings).map(|o| o.name.as_str()),
+            Some("Casque")
         );
     }
 }

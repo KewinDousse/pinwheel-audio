@@ -29,6 +29,10 @@ pub const WM_TRAY: u32 = WM_APP + 5;
 pub const WM_CAPTURE_BEGIN: u32 = WM_APP + 6;
 /// The capture ended: register the shortcuts again.
 pub const WM_CAPTURE_END: u32 = WM_APP + 7;
+/// Win + middle click: mute or unmute the default output.
+pub const WM_TOGGLE_MUTE: u32 = WM_APP + 8;
+/// An update check ended: its result is in `update::take_result`.
+pub const WM_UPDATE_CHECKED: u32 = WM_APP + 9;
 
 /// A named mutex held for the life of the process.
 pub struct InstanceLock(HANDLE);
