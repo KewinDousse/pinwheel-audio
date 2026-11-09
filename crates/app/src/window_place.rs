@@ -35,7 +35,8 @@ pub fn restore(hwnd: HWND) {
     placement.showCmd = SW_HIDE.0 as u32;
     placement.rcNormalPosition = rect;
     // Twice: when the rectangle is on a screen of another scale, the first
-    // move changes the window's DPI and Windows scales its size with it.
+    // move changes the window's DPI, and winit then scales its size to keep
+    // it in points.
     for _ in 0..2 {
         if let Err(e) = unsafe { SetWindowPlacement(hwnd, &placement) } {
             log::warn!("placing the settings window failed: {e}");

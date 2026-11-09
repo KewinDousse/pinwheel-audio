@@ -107,14 +107,14 @@ function ClickAway($when) {
   Start-Sleep 1
   Check "another window has the focus $when" ([U]::ForegroundProcess() -ne 'pinwheel')
 }
-# Windows cascades new windows, sometimes behind the taskbar, where a click
-# opens Search. Clear of the taskbar, and of (10, 10) where ClickAway clicks.
 function MoveSettings($x, $y, $width = 0, $height = 0) {
   # SWP_NOZORDER, plus SWP_NOSIZE without a size.
   $flags = if ($width) { 4 } else { 5 }
   [U]::SetWindowPos([U]::FindWindow([NullString]::Value, $title), [IntPtr]::Zero, $x, $y, $width, $height, $flags) | Out-Null
   Start-Sleep 1
 }
+# Windows cascades new windows, sometimes behind the taskbar, where a click
+# opens Search. Clear of the taskbar, and of (10, 10) where ClickAway clicks.
 function OpenSettings([switch]$WherePlaced) {
   Start-Process $Exe -ArgumentList '--settings'
   Start-Sleep 8
