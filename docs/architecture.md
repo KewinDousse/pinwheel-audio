@@ -23,10 +23,10 @@ All the state is in `App` (`crates/app/src/app.rs`), on the main thread, which o
 | `WM_VOLUME_NOTCHES` | hook thread | Changes the volume, shows the display |
 | `WM_TOGGLE_MUTE` | hook thread | Mutes or unmutes, shows the display |
 | `WM_HOTKEY` | `RegisterHotKey` | Changes the default output |
-| `WM_UPDATE_CHECKED` | update thread | Writes the newer release in `status.json` |
+| `WM_UPDATE_CHECKED` | update thread | Writes the newer release in `status.json`, or schedules a retry when GitHub is out of reach |
 | `WM_TRAY`, `TaskbarCreated` | Explorer | Menu, settings, icon added again |
 | `WM_POWERBROADCAST` (resume), `WM_WTSSESSION_CHANGE` (unlock) | Windows | Hooks reinstalled |
-| `WM_TIMER` | timers | Display fade, retry of refused shortcuts and of the icon, daily update check |
+| `WM_TIMER` | timers | Display fade, retry of refused shortcuts and of the icon, daily update check and its retry |
 
 The mouse and keyboard hooks run on their own thread (`hook.rs`), see [ADR 0003](adr/0003-win-wheel-hook.md).
 
