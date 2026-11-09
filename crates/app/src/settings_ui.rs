@@ -63,9 +63,10 @@ pub fn run() {
         app.themes.install(&cc.egui_ctx);
         // The window stays hidden until its first frame is drawn.
         app.hwnd = window_hwnd(cc);
+        // `place` stays empty, so that the first refresh saves the place
+        // even of a window never moved: Windows cascades new windows.
         if let Some(hwnd) = app.hwnd {
             window_place::restore(hwnd);
-            app.place = window_place::current(hwnd);
         }
         Ok(Box::new(app) as Box<dyn eframe::App>)
     });
@@ -868,7 +869,7 @@ fn hotkey_messages(
 }
 
 fn window_hwnd(cc: &eframe::CreationContext) -> Option<HWND> {
-    use wgpu::rwh::{HasWindowHandle, RawWindowHandle};
+    use eframe::wgpu::rwh::{HasWindowHandle, RawWindowHandle};
     match cc.window_handle().ok()?.as_raw() {
         RawWindowHandle::Win32(handle) => Some(HWND(handle.hwnd.get() as *mut _)),
         _ => None,

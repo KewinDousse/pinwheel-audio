@@ -61,7 +61,7 @@ Each opening starts a process, so the window's start time is what the user waits
 
 ## Settings window place
 
-The window opens where it was closed, with the same size (`crates/app/src/window_place.rs`). Windows' window placement gives the normal rectangle even while the window is minimized or maximized, where its current rectangle is off-screen or covers the screen. The window saves it once a second when it changed, and on exit, in `%LOCALAPPDATA%\Pinwheel\window.txt`; the file is local, as screens differ from one machine to the next. At the next opening, the rectangle is set back while the window is still hidden, twice so that a screen of another scale does not scale the size, and Windows moves it onto a screen if that one is gone. Only the normal rectangle is kept: a window closed maximized opens at its normal size, and a snapped one at its place from before the snap.
+The window opens where it was closed, with the same size (`crates/app/src/window_place.rs`). Windows' window placement gives the normal rectangle even while the window is minimized or maximized, where its current rectangle is off-screen or covers the screen. The window saves it at its first refresh, then once a second when it changed, and on exit, in `%LOCALAPPDATA%\Pinwheel\window.txt`; the file is local, as screens differ from one machine to the next. At the next opening, the rectangle is set back while the window is still hidden, twice so that a screen of another scale does not scale the size, and Windows moves it onto a screen if that one is gone. Only the normal rectangle is kept: a window closed maximized opens at its normal size, and a snapped one at its place from before the snap.
 
 ## Settings window look
 

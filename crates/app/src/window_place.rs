@@ -7,6 +7,7 @@
 
 use crate::paths;
 use windows::Win32::Foundation::{HWND, RECT};
+use windows::Win32::Graphics::Gdi::{MONITOR_DEFAULTTONULL, MonitorFromRect};
 use windows::Win32::UI::WindowsAndMessaging::{GetWindowPlacement, SW_HIDE, SetWindowPlacement, WINDOWPLACEMENT};
 
 /// The normal rectangle of `hwnd`, in workspace coordinates.
@@ -36,10 +37,12 @@ pub fn restore(hwnd: HWND) {
             return;
         }
     }
-    // Windows moves a rectangle that is off every screen onto one; any other
-    // difference is worth knowing about.
+    // Windows moves a rectangle that is off every screen onto one, as it
+    // should; any other difference is worth knowing about.
+    let on_a_screen = !unsafe { MonitorFromRect(&rect, MONITOR_DEFAULTTONULL) }.is_invalid();
     if let Some(placed) = current(hwnd)
         && placed != rect
+        && on_a_screen
     {
         log::warn!(
             "the settings window is at {:?} instead of {:?}",
