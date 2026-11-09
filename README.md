@@ -5,7 +5,7 @@
 <h1 align="center">Pinwheel</h1>
 
 <p align="center">
-  <b>Win + wheel for the volume, one key per audio output.</b><br>
+  <b>Win + scroll to change volume, one hotkey per audio output.</b><br>
   A small Windows 10/11 app that sits in the notification area.
 </p>
 
