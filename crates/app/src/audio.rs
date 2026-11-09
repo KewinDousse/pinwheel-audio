@@ -75,15 +75,14 @@ impl Audio {
         Ok(VolumeState { level, muted })
     }
 
-    /// Mutes the default output, or unmutes it.
+    /// Mutes the default output, or unmutes it. The change comes last, as
+    /// a failure makes the caller try the whole action again.
     pub fn toggle_mute(&self) -> Result<VolumeState> {
         let endpoint = endpoint_volume(&self.default_output()?)?;
+        let level = unsafe { endpoint.GetMasterVolumeLevelScalar() }?;
         let muted = !unsafe { endpoint.GetMute() }?.as_bool();
         unsafe { endpoint.SetMute(muted, std::ptr::null()) }?;
-        Ok(VolumeState {
-            level: unsafe { endpoint.GetMasterVolumeLevelScalar() }?,
-            muted,
-        })
+        Ok(VolumeState { level, muted })
     }
 
     /// Makes `id` the default output for apps and media, and optionally for calls.

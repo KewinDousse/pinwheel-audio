@@ -351,10 +351,10 @@ impl App {
     fn on_update_checked(&mut self) {
         let result = update::take_result();
         match &result {
-            Some(Err(_)) => {
+            Some(Err(update::Failure::NoAnswer(_))) => {
                 unsafe { SetTimer(Some(self.hwnd), TIMER_UPDATE_RETRY, UPDATE_RETRY_MS, None) };
             }
-            Some(Ok(_)) => {
+            Some(_) => {
                 let _ = unsafe { KillTimer(Some(self.hwnd), TIMER_UPDATE_RETRY) };
             }
             None => {}

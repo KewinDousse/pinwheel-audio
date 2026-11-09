@@ -16,7 +16,29 @@ use windows::Win32::UI::WindowsAndMessaging::PostMessageW;
 use windows::core::{PCWSTR, w};
 
 /// A newer release, or `None` when this one is the latest.
-pub type CheckResult = Result<Option<Release>, String>;
+pub type CheckResult = Result<Option<Release>, Failure>;
+
+pub enum Failure {
+    /// No network yet, a timeout: worth trying again soon.
+    NoAnswer(String),
+    /// An answer that is not the release: trying again soon would get the same.
+    BadAnswer(String),
+}
+
+impl std::fmt::Display for Failure {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Self::NoAnswer(e) => write!(f, "no answer: {e}"),
+            Self::BadAnswer(e) => f.write_str(e),
+        }
+    }
+}
+
+impl From<windows::core::Error> for Failure {
+    fn from(e: windows::core::Error) -> Self {
+        Self::NoAnswer(e.to_string())
+    }
+}
 
 static RESULT: Mutex<Option<CheckResult>> = Mutex::new(None);
 
@@ -24,14 +46,11 @@ static RESULT: Mutex<Option<CheckResult>> = Mutex::new(None);
 const MAX_ANSWER: usize = 1 << 20;
 const TIMEOUT_MS: i32 = 15_000;
 
-type Error = Box<dyn std::error::Error>;
-
 pub fn start(main_window: HWND) {
     let main = main_window.0 as isize;
     let spawned = std::thread::Builder::new().name("update-check".into()).spawn(move || {
         let result = latest_release_answer()
-            .map_err(|e| e.to_string())
-            .and_then(|json| update::newer_release(&json, env!("CARGO_PKG_VERSION")));
+            .and_then(|json| update::newer_release(&json, env!("CARGO_PKG_VERSION")).map_err(Failure::BadAnswer));
         *RESULT.lock().unwrap_or_else(PoisonError::into_inner) = Some(result);
         let _ = unsafe { PostMessageW(Some(HWND(main as *mut _)), WM_UPDATE_CHECKED, WPARAM(0), LPARAM(0)) };
     });
@@ -48,9 +67,9 @@ pub fn take_result() -> Option<CheckResult> {
 struct Handle(*mut c_void);
 
 impl Handle {
-    fn new(raw: *mut c_void) -> Result<Self, Error> {
+    fn new(raw: *mut c_void) -> windows::core::Result<Self> {
         if raw.is_null() {
-            Err(windows::core::Error::from_thread().into())
+            Err(windows::core::Error::from_thread())
         } else {
             Ok(Self(raw))
         }
@@ -65,7 +84,7 @@ impl Drop for Handle {
 
 /// WinHTTP rather than an HTTP crate: it comes with Windows, and follows
 /// the system proxy and certificates.
-fn latest_release_answer() -> Result<String, Error> {
+fn latest_release_answer() -> Result<String, Failure> {
     let agent = wide(&format!("Pinwheel/{}", env!("CARGO_PKG_VERSION")));
     let session = Handle::new(unsafe {
         WinHttpOpen(
@@ -108,7 +127,7 @@ fn latest_release_answer() -> Result<String, Error> {
         )
     }?;
     if status != 200 {
-        return Err(format!("GitHub answered {status}").into());
+        return Err(Failure::BadAnswer(format!("GitHub answered {status}")));
     }
 
     let mut body = Vec::new();
@@ -121,8 +140,8 @@ fn latest_release_answer() -> Result<String, Error> {
         }
         body.extend_from_slice(&buffer[..read as usize]);
         if body.len() > MAX_ANSWER {
-            return Err("the answer is too large".into());
+            return Err(Failure::BadAnswer("the answer is too large".into()));
         }
     }
-    Ok(String::from_utf8(body)?)
+    String::from_utf8(body).map_err(|e| Failure::BadAnswer(e.to_string()))
 }

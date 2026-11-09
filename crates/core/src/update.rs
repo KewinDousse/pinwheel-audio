@@ -21,9 +21,10 @@ pub fn latest_release_path() -> String {
     format!("/repos/{repository}/releases/latest")
 }
 
-/// The release GitHub answered with, when it is newer than `current`. The
-/// page is opened in the browser, so it must be on this repository. An
-/// answer that is not a release, such as a proxy's page, is an error.
+/// The release GitHub answered with, when it is newer than `current`. An
+/// answer that is not a release, such as a proxy's page, is an error. So is
+/// a newer release whose page is not on this repository, as the page opens
+/// in the browser.
 pub fn newer_release(json: &str, current: &str) -> Result<Option<Release>, String> {
     #[derive(Deserialize)]
     struct Latest {
@@ -32,9 +33,17 @@ pub fn newer_release(json: &str, current: &str) -> Result<Option<Release>, Strin
     }
     let latest: Latest = serde_json::from_str(json).map_err(|e| format!("the answer is not a release: {e}"))?;
     let version = latest.tag_name.trim_start_matches('v');
-    let on_repository = latest.html_url.starts_with(&format!("{REPOSITORY}/releases/"));
     let newer = matches!((parse(version), parse(current)), (Some(theirs), Some(ours)) if theirs > ours);
-    Ok((on_repository && newer).then(|| Release {
+    if !newer {
+        return Ok(None);
+    }
+    if !latest.html_url.starts_with(&format!("{REPOSITORY}/releases/")) {
+        return Err(format!(
+            "the release page is not on this repository: {}",
+            latest.html_url
+        ));
+    }
+    Ok(Some(Release {
         version: version.into(),
         url: latest.html_url,
     }))
@@ -76,9 +85,9 @@ mod tests {
     }
 
     #[test]
-    fn ignores_a_page_elsewhere() {
+    fn fails_on_a_page_elsewhere() {
         let json = r#"{"tag_name":"v9.0.0","html_url":"https://example.com/releases/v9"}"#;
-        assert_eq!(newer_release(json, "0.2.0"), Ok(None));
+        assert!(newer_release(json, "0.2.0").is_err());
     }
 
     #[test]

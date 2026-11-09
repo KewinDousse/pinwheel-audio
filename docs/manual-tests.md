@@ -70,7 +70,7 @@ What the automated tests do not cover. The log (`%LOCALAPPDATA%\Pinwheel\logs\pi
 
 - [ ] Run an exe older than the latest release: within seconds, the settings window shows "Pinwheel x.y.z is available", and the tray menu starts with it. Both open the release page.
 - [ ] Turn "Check for updates" off: the banner and the menu item go away, and the log shows no new check. On again: the log shows a check at once.
-- [ ] Without network: the log says "checking for updates failed", nothing else changes.
+- [ ] Without network: the log says "checking for updates failed", nothing else changes, and a new check runs 15 minutes later.
 
 ## Shortcut capture
 
