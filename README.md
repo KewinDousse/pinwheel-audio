@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/images/logo.png" width="128" height="128" alt="The Pinwheel logo: a pinwheel of white and yellow triangles around a dark centre, on a magenta tile">
+  <img src="docs/images/logo.png" width="128" height="128" alt="The Pinwheel logo: a pinwheel of white and yellow triangles around a dark centre, on a deep pink tile">
 </p>
 
 <h1 align="center">Pinwheel</h1>
