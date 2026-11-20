@@ -4,7 +4,7 @@ What the automated tests do not cover. The log (`%LOCALAPPDATA%\Pinwheel\logs\pi
 
 ## Startup
 
-- [ ] First run: the icon appears and the settings window opens.
+- [ ] First run: the icon appears and the settings window opens. The icon is the new tile (pedestrian-crossing pinwheel on magenta), sharp at 16 px in the notification area, in the settings title bar and taskbar, on `pinwheel.exe` in Explorer, and next to "Pinwheel started" on the display.
 - [ ] Run the executable again: a single Pinwheel runs, the settings open.
 - [ ] Startup ticked, then sign out and in again: Pinwheel runs.
 - [ ] Turn Pinwheel off in Windows Settings > Apps > Startup: the settings window says so.

@@ -2,7 +2,7 @@
 
 use tiny_skia::Pixmap;
 
-/// Each image of the icon file, which holds PNGs (see `tools/make-icon`).
+/// Each image of the icon file, which holds PNGs (see `docs/images/logo.svg`).
 pub fn images() -> Vec<Pixmap> {
     let ico: &[u8] = include_bytes!("../res/pinwheel.ico");
     let count = usize::from(u16::from_le_bytes([ico[4], ico[5]]));
