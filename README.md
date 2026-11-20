@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/images/logo.png" width="128" height="128" alt="The Pinwheel logo: white pedestrian crossing stripes in an X on a magenta tile, with a yellow centre">
+  <img src="docs/images/logo.png" width="128" height="128" alt="The Pinwheel logo: a pinwheel of white and yellow triangles around a dark centre, on a deep pink tile">
 </p>
 
 <h1 align="center">Pinwheel</h1>
@@ -75,7 +75,7 @@ Rust (edition 2024). The repository holds:
 
 - `crates/core`: logic that does not depend on Windows (settings, shortcuts, interface texts, volume steps, wheel, output matching, drawing of the display). It builds and is tested on any OS.
 - `crates/app`: the Windows app.
-- `tools/make-icon`: generates `crates/app/res/pinwheel.ico`.
+- `docs/images/logo.svg`: the source of the icon. `scripts/export-icon.sh` (needs `resvg` and `python3`) renders it at 16, 20, 24, 32, 40, 48, 64, 128 and 256 px into `crates/app/res/pinwheel.ico`, and the 256 px one into `docs/images/logo.png`.
 
 See [`docs/architecture.md`](docs/architecture.md), the decisions in [`docs/adr/`](docs/adr/), and [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
