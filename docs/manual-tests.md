@@ -4,7 +4,9 @@ What the automated tests do not cover. The log (`%LOCALAPPDATA%\Pinwheel\logs\pi
 
 ## Startup
 
-- [ ] First run: the icon appears and the settings window opens. The icon is the new tile (pedestrian-crossing pinwheel on magenta), sharp at 16 px in the notification area, in the settings title bar and taskbar, on `pinwheel.exe` in Explorer, and next to "Pinwheel started" on the display.
+- [ ] First run: the icon appears and the settings window opens.
+- [ ] The icon is the pinwheel tile (white and yellow triangles on a deep pink tile), sharp at 16 px in the notification area, in the settings title bar and taskbar, and on `pinwheel.exe` in Explorer.
+- [ ] At 125 % and 150 % display scaling, the notification area icon stays sharp (20 and 24 px images).
 - [ ] Run the executable again: a single Pinwheel runs, the settings open.
 - [ ] Startup ticked, then sign out and in again: Pinwheel runs.
 - [ ] Turn Pinwheel off in Windows Settings > Apps > Startup: the settings window says so.

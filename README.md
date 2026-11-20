@@ -75,7 +75,7 @@ Rust (edition 2024). The repository holds:
 
 - `crates/core`: logic that does not depend on Windows (settings, shortcuts, interface texts, volume steps, wheel, output matching, drawing of the display). It builds and is tested on any OS.
 - `crates/app`: the Windows app.
-- `docs/images/logo.svg`: the source of the icon. `crates/app/res/pinwheel.ico` (16 to 256 px, PNG images) and `docs/images/logo.png` are exported from it with `resvg`.
+- `docs/images/logo.svg`: the source of the icon. `scripts/export-icon.sh` (needs `resvg` and `python3`) renders it at 16, 20, 24, 32, 40, 48, 64, 128 and 256 px into `crates/app/res/pinwheel.ico`, and the 256 px one into `docs/images/logo.png`.
 
 See [`docs/architecture.md`](docs/architecture.md), the decisions in [`docs/adr/`](docs/adr/), and [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
